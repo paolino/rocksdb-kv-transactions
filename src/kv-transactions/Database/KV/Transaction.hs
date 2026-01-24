@@ -67,7 +67,7 @@ module Database.KV.Transaction
     , runTransactionUnguarded
 
       -- * Utilities
-    , mkCols
+    , fromPairList
 
       -- * Re-exports
     , module Data.GADT.Compare
@@ -108,10 +108,10 @@ import Database.KV.Database
     , KeyOf
     , Selector
     , ValueOf
+    , buildOperation
     , decodeValueThrow
+    , fromPairList
     , hoistQueryIterator
-    , mkCols
-    , mkOp
     )
 
 {- |
@@ -390,7 +390,7 @@ runTransactionUnguarded db@Database{columns, applyOps} tx = do
     toBatchOps :: DSum t Workspace -> m [op]
     toBatchOps (sel :=> Workspace ws) =
         case DMap.lookup sel columns of
-            Just column -> pure $ uncurry (mkOp db column) <$> Map.toList ws
+            Just column -> pure $ uncurry (buildOperation db column) <$> Map.toList ws
             Nothing -> fail "runTransaction: column not found"
 
 {- |

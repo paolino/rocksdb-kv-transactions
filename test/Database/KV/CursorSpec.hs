@@ -25,9 +25,9 @@ import Database.KV.Transaction
     , GOrdering (..)
     , KV
     , Transaction
+    , fromPairList
     , insert
     , iterating
-    , mkCols
     , runTransactionUnguarded
     )
 import Database.RocksDB
@@ -55,7 +55,7 @@ instance GEq Tables where
     geq Items Items = Just Refl
 
 codecs :: DMap Tables Codecs
-codecs = mkCols [Items :=> bsCodec]
+codecs = fromPairList [Items :=> bsCodec]
 
 runTx
     :: DB

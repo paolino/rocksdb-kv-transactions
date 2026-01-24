@@ -57,7 +57,7 @@ module Database.KV.Database
       -- * Database Interface
     , Database (..)
     , hoistDatabase
-    , mkOp
+    , buildOperation
 
       -- * Iterator Types
     , Pos (..)
@@ -65,7 +65,7 @@ module Database.KV.Database
     , hoistQueryIterator
 
       -- * Utilities
-    , mkCols
+    , fromPairList
 
       -- * Re-exports
     , module Data.GADT.Compare
@@ -240,17 +240,17 @@ hoistDatabase nat Database{..} =
 Create a batch operation from a key and optional value.
 @Just v@ creates a put operation, @Nothing@ creates a delete.
 -}
-mkOp
+buildOperation
     :: Database m cf t op
     -> Column cf c
     -> KeyOf c
     -> Maybe (ValueOf c)
     -> op
-mkOp
+buildOperation
     Database{mkOperation}
     Column{family, codecs = Codecs{keyCodec, valueCodec}}
     k = mkOperation family (review keyCodec k) . fmap (review valueCodec)
 
 -- | Convenience function to create a 'DMap' from a list of typed pairs.
-mkCols :: (GCompare t) => [DSum t r] -> DMap t r
-mkCols = DMap.fromList
+fromPairList :: (GCompare t) => [DSum t r] -> DMap t r
+fromPairList = DMap.fromList

@@ -18,8 +18,8 @@ import Database.KV.Transaction
     , KV
     , Transaction
     , delete
+    , fromPairList
     , insert
-    , mkCols
     , query
     , runTransactionUnguarded
     )
@@ -49,7 +49,7 @@ instance GEq Tables where
 
 -- | Index codecs by table type
 codecs :: DMap Tables Codecs
-codecs = mkCols [Items :=> bsCodec]
+codecs = fromPairList [Items :=> bsCodec]
 
 -- | Run a transaction on a RocksDB database
 runTx
