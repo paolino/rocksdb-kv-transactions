@@ -3,9 +3,7 @@ Tests for Database.KV.Transaction
 -}
 module Database.KV.TransactionSpec (spec) where
 
-import Control.Lens (prism')
 import Data.ByteString (ByteString)
-import Data.ByteString qualified as B
 import Data.Default (Default (..))
 import Data.Type.Equality ((:~:) (..))
 import Database.KV.Database (mkColumns)

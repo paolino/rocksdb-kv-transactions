@@ -61,8 +61,9 @@ import Database.KV.Database
     , hoistQueryIterator
     )
 
--- | Low-level query instructions.
--- These are interpreted by 'interpretQuerying'.
+{- | Low-level query instructions.
+These are interpreted by 'interpretQuerying'.
+-}
 data QueryInstruction m cf t op a where
     -- | Read a value from a column
     Query
@@ -77,13 +78,15 @@ data QueryInstruction m cf t op a where
         -> Cursor (Querying m cf t op) c a
         -> QueryInstruction m cf t op a
 
--- | Query monad for composing read-only database operations.
--- Built using the operational monad pattern for easy interpretation.
+{- | Query monad for composing read-only database operations.
+Built using the operational monad pattern for easy interpretation.
+-}
 type Querying m cf t op =
     ProgramT (QueryInstruction m cf t op) m
 
--- | Read a value from a column.
--- Returns @Nothing@ if the key doesn't exist.
+{- | Read a value from a column.
+Returns @Nothing@ if the key doesn't exist.
+-}
 query
     :: (GCompare t, Ord (KeyOf c))
     => t c
@@ -93,11 +96,12 @@ query
     -> Querying m cf t op (Maybe (ValueOf c))
 query t k = singleton $ Query t k
 
--- | Run a cursor program over a column.
--- Enables range queries and iteration over entries.
---
--- The cursor operates on a snapshot, providing consistent reads
--- across multiple entries within the same 'iterating' call.
+{- | Run a cursor program over a column.
+Enables range queries and iteration over entries.
+
+The cursor operates on a snapshot, providing consistent reads
+across multiple entries within the same 'iterating' call.
+-}
 iterating
     :: (GCompare t)
     => t c
@@ -141,10 +145,11 @@ interpretIterating db@Database{newIterator, columns} t cursorProg = do
             column
             cursorProg
 
--- | Interpret a query program against the database.
---
--- Note: Each instruction runs on an independent snapshot.
--- For consistent reads across multiple keys, use 'iterating'.
+{- | Interpret a query program against the database.
+
+Note: Each instruction runs on an independent snapshot.
+For consistent reads across multiple keys, use 'iterating'.
+-}
 interpretQuerying
     :: (GCompare t, MonadFail m)
     => Database m cf t op

@@ -38,6 +38,7 @@ instance GCompare MyColumns where ...
 -}
 module Database.KV.Database
     ( -- * Column Type Representation
+
       -- | Types for representing key-value pairs in a type-safe manner
       KV
     , Selector
@@ -80,30 +81,35 @@ import Data.Dependent.Map qualified as DMap
 import Data.Dependent.Sum (DSum ((:=>)))
 import Data.GADT.Compare (GCompare (..), GEq (..), GOrdering (..))
 
--- | Phantom type representing a key-value pair in a collection.
--- Used as a type-level tag to associate keys and values.
---
--- @KV UserId User@ represents a collection mapping @UserId@ to @User@.
+{- | Phantom type representing a key-value pair in a collection.
+Used as a type-level tag to associate keys and values.
+
+@KV UserId User@ represents a collection mapping @UserId@ to @User@.
+-}
 data KV k v
 
--- | Type alias for selecting a column from a column family.
--- @Selector t k v@ is a column selector @t@ for key type @k@ and value type @v@.
+{- | Type alias for selecting a column from a column family.
+@Selector t k v@ is a column selector @t@ for key type @k@ and value type @v@.
+-}
 type Selector t k v = t (KV k v)
 
--- | Extract the key type from a 'KV' pair.
---
--- @KeyOf (KV UserId User) ~ UserId@
+{- | Extract the key type from a 'KV' pair.
+
+@KeyOf (KV UserId User) ~ UserId@
+-}
 type family KeyOf c where
     KeyOf (KV k v) = k
 
--- | Extract the value type from a 'KV' pair.
---
--- @ValueOf (KV UserId User) ~ User@
+{- | Extract the value type from a 'KV' pair.
+
+@ValueOf (KV UserId User) ~ User@
+-}
 type family ValueOf c where
     ValueOf (KV k v) = v
 
--- | Codecs for encoding and decoding keys and values to/from 'ByteString'.
--- Uses lens 'Prism'' for bidirectional encoding that may fail on decode.
+{- | Codecs for encoding and decoding keys and values to/from 'ByteString'.
+Uses lens 'Prism'' for bidirectional encoding that may fail on decode.
+-}
 data Codecs c = Codecs
     { keyCodec :: Prism' ByteString (KeyOf c)
     -- ^ Prism for encoding/decoding keys
@@ -111,8 +117,9 @@ data Codecs c = Codecs
     -- ^ Prism for encoding/decoding values
     }
 
--- | A column definition pairing a backend-specific column family
--- with codecs for serialization.
+{- | A column definition pairing a backend-specific column family
+with codecs for serialization.
+-}
 data Column cf c = Column
     { family :: cf
     -- ^ Backend-specific column family identifier (e.g., RocksDB ColumnFamily)
@@ -120,8 +127,9 @@ data Column cf c = Column
     -- ^ Codecs for this column's keys and values
     }
 
--- | Create columns from a list of column families and codecs.
--- The lists must have the same length; families are paired with codecs in order.
+{- | Create columns from a list of column families and codecs.
+The lists must have the same length; families are paired with codecs in order.
+-}
 mkColumns :: [cf] -> DMap k2 Codecs -> DMap k2 (Column cf)
 mkColumns columnFamilies = snd . DMap.mapAccumLWithKey f columnFamilies
   where
@@ -138,10 +146,11 @@ getColumn t columns =
         Just col -> pure col
         Nothing -> fail "query: column not found"
 
--- | Decode a value using the column's codec, failing if decode fails.
--- This should never fail if the data was written correctly.
+{- | Decode a value using the column's codec, failing if decode fails.
+This should never fail if the data was written correctly.
+-}
 decodeValueThrow
-    :: MonadFail m => Codecs c -> ByteString -> m (ValueOf c)
+    :: (MonadFail m) => Codecs c -> ByteString -> m (ValueOf c)
 decodeValueThrow codec bs =
     case preview (valueCodec codec) bs of
         Just v -> return v
@@ -149,21 +158,22 @@ decodeValueThrow codec bs =
 
 -- | Iterator position commands for cursor operations.
 data Pos
-    = PosLast
-    -- ^ Move to last entry
-    | PosPrev
-    -- ^ Move to previous entry
-    | PosAny ByteString
-    -- ^ Seek to specific key
-    | PosNext
-    -- ^ Move to next entry
-    | PosFirst
-    -- ^ Move to first entry
-    | PosDestroy
-    -- ^ Release iterator resources
+    = -- | Move to last entry
+      PosLast
+    | -- | Move to previous entry
+      PosPrev
+    | -- | Seek to specific key
+      PosAny ByteString
+    | -- | Move to next entry
+      PosNext
+    | -- | Move to first entry
+      PosFirst
+    | -- | Release iterator resources
+      PosDestroy
 
--- | Backend-agnostic iterator interface for range queries.
--- Iterators maintain a position and can move through entries.
+{- | Backend-agnostic iterator interface for range queries.
+Iterators maintain a position and can move through entries.
+-}
 data QueryIterator m = QueryIterator
     { step :: Pos -> m ()
     -- ^ Move the iterator to a new position
@@ -185,8 +195,9 @@ hoistQueryIterator nat QueryIterator{step, isValid, entry} =
         , entry = nat entry
         }
 
--- | Abstract database interface supporting multiple typed columns.
--- This is the core abstraction that backends (like RocksDB) implement.
+{- | Abstract database interface supporting multiple typed columns.
+This is the core abstraction that backends (like RocksDB) implement.
+-}
 data Database m cf t op = Database
     { valueAt :: cf -> ByteString -> m (Maybe ByteString)
     -- ^ Read a value by column family and key
@@ -202,7 +213,7 @@ data Database m cf t op = Database
 
 -- | Transform the monad of a 'Database'.
 hoistDatabase
-    :: Functor m
+    :: (Functor m)
     => (forall x. m x -> n x)
     -> Database m cf t op
     -> Database n cf t op
@@ -215,8 +226,9 @@ hoistDatabase nat Database{..} =
         , columns = columns
         }
 
--- | Create a batch operation from a key and optional value.
--- @Just v@ creates a put operation, @Nothing@ creates a delete.
+{- | Create a batch operation from a key and optional value.
+@Just v@ creates a put operation, @Nothing@ creates a delete.
+-}
 mkOp
     :: Database m cf t op
     -> Column cf c
@@ -229,5 +241,5 @@ mkOp
     k = mkOperation family (review keyCodec k) . fmap (review valueCodec)
 
 -- | Convenience function to create a 'DMap' from a list of typed pairs.
-mkCols :: GCompare t => [DSum t r] -> DMap t r
+mkCols :: (GCompare t) => [DSum t r] -> DMap t r
 mkCols = DMap.fromList

@@ -117,7 +117,7 @@ spec = describe "Database.KV.Cursor" $ do
                         e1 <- firstEntry
                         e2 <- nextEntry
                         e3 <- nextEntry
-                        e4 <- nextEntry  -- Should be Nothing
+                        e4 <- nextEntry -- Should be Nothing
                         pure (e1, e2, e3, e4)
             result
                 `shouldBe` ( Just Entry{entryKey = "a", entryValue = "1"}
@@ -137,7 +137,7 @@ spec = describe "Database.KV.Cursor" $ do
                         e1 <- lastEntry
                         e2 <- prevEntry
                         e3 <- prevEntry
-                        e4 <- prevEntry  -- Should be Nothing
+                        e4 <- prevEntry -- Should be Nothing
                         pure (e1, e2, e3, e4)
             result
                 `shouldBe` ( Just Entry{entryKey = "c", entryValue = "3"}

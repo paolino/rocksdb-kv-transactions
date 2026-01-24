@@ -69,18 +69,19 @@ import Database.RocksDB
     , write
     )
 
--- | Create a 'Database' backed by RocksDB.
---
--- This connects the abstract 'Database' interface to RocksDB operations:
---
--- * 'valueAt' uses 'getCF' for point lookups
--- * 'applyOps' uses 'write' for atomic batch operations
--- * 'newIterator' creates RocksDB iterators for range queries
---
--- The @columns@ parameter maps your typed column selectors to
--- RocksDB column families with their serialization codecs.
+{- | Create a 'Database' backed by RocksDB.
+
+This connects the abstract 'Database' interface to RocksDB operations:
+
+* 'valueAt' uses 'getCF' for point lookups
+* 'applyOps' uses 'write' for atomic batch operations
+* 'newIterator' creates RocksDB iterators for range queries
+
+The @columns@ parameter maps your typed column selectors to
+RocksDB column families with their serialization codecs.
+-}
 mkRocksDBDatabase
-    :: MonadIO m
+    :: (MonadIO m)
     => DB
     -- ^ Open RocksDB database handle
     -> DMap t (Column ColumnFamily)

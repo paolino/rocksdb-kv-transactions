@@ -1,17 +1,17 @@
-cabal-version:   3.4
-name:            rocksdb-kv-transactions
-version:         0.1.0.0
-synopsis:        RocksDB backend for key-value transactions
+cabal-version: 3.4
+name:          rocksdb-kv-transactions
+version:       0.1.0.0
+synopsis:      RocksDB backend for key-value transactions
 description:
   A library providing RocksDB-backed key-value transactions with
   dependent types for type-safe multi-collection operations.
 
-license:         Apache-2.0
-license-file:    LICENSE
-author:          Paolo Veronelli
-maintainer:      paolo.veronelli@gmail.com
-category:        Database
-build-type:      Simple
+license:       Apache-2.0
+license-file:  LICENSE
+author:        Paolo Veronelli
+maintainer:    paolo.veronelli@gmail.com
+category:      Database
+build-type:    Simple
 
 common warnings
   ghc-options:
@@ -54,7 +54,7 @@ library kv-transactions
     Database.KV.Transaction
 
   build-depends:
-    , base             >=4.14 && <5
+    , base           >=4.14 && <5
     , bytestring
     , containers
     , dependent-map
@@ -71,7 +71,7 @@ library
   import:           warnings
   exposed-modules:  Database.KV.RocksDB
   build-depends:
-    , base                          >=4.14 && <5
+    , base                                     >=4.14 && <5
     , rocksdb-haskell-jprupp
     , rocksdb-kv-transactions:kv-transactions
 
@@ -88,7 +88,7 @@ test-suite unit-tests
     Database.KV.TransactionSpec
 
   build-depends:
-    , base                    >=4.14 && <5
+    , base                                     >=4.14 && <5
     , bytestring
     , data-default
     , hspec

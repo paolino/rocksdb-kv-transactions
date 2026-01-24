@@ -12,10 +12,7 @@ let
       implicit-hie = { index-state = indexState; };
     };
     withHoogle = true;
-    buildInputs = [
-      pkgs.just
-      pkgs.nixfmt-classic
-    ];
+    buildInputs = [ pkgs.just pkgs.nixfmt-classic ];
     shellHook = ''
       echo "Entering shell for rocksdb-kv-transactions development"
     '';
@@ -33,7 +30,10 @@ let
 in {
   devShells.default = project.shell;
   inherit project;
-  packages.rocksdb-kv-transactions = project.hsPkgs.rocksdb-kv-transactions.components.library;
-  packages.kv-transactions = project.hsPkgs.rocksdb-kv-transactions.components.sublibs.kv-transactions;
-  packages.unit-tests = project.hsPkgs.rocksdb-kv-transactions.components.tests.unit-tests;
+  packages.rocksdb-kv-transactions =
+    project.hsPkgs.rocksdb-kv-transactions.components.library;
+  packages.kv-transactions =
+    project.hsPkgs.rocksdb-kv-transactions.components.sublibs.kv-transactions;
+  packages.unit-tests =
+    project.hsPkgs.rocksdb-kv-transactions.components.tests.unit-tests;
 }

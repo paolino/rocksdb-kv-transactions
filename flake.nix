@@ -12,17 +12,14 @@
     flake-utils.url = "github:hamishmack/flake-utils/hkm/nested-hydraJobs";
   };
 
-  outputs =
-    inputs@{ self, nixpkgs, flake-utils, haskellNix, ... }:
+  outputs = inputs@{ self, nixpkgs, flake-utils, haskellNix, ... }:
     let
       lib = nixpkgs.lib;
 
       perSystem = system:
         let
           pkgs = import nixpkgs {
-            overlays = [
-              haskellNix.overlay
-            ];
+            overlays = [ haskellNix.overlay ];
             inherit system;
           };
           project = import ./nix/project.nix {
@@ -31,7 +28,9 @@
           };
 
         in {
-          packages = project.packages // { default = project.packages.rocksdb-kv-transactions; };
+          packages = project.packages // {
+            default = project.packages.rocksdb-kv-transactions;
+          };
           inherit (project) devShells;
         };
 
