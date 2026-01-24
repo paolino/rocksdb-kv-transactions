@@ -35,4 +35,5 @@ in {
   inherit project;
   packages.rocksdb-kv-transactions = project.hsPkgs.rocksdb-kv-transactions.components.library;
   packages.kv-transactions = project.hsPkgs.rocksdb-kv-transactions.components.sublibs.kv-transactions;
+  packages.unit-tests = project.hsPkgs.rocksdb-kv-transactions.components.tests.unit-tests;
 }

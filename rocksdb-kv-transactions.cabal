@@ -77,3 +77,26 @@ library
 
   hs-source-dirs:   src/rocksdb-kv-transactions/
   default-language: Haskell2010
+
+test-suite unit-tests
+  import:             warnings
+  type:               exitcode-stdio-1.0
+  hs-source-dirs:     test
+  main-is:            Main.hs
+  other-modules:
+    Database.KV.CursorSpec
+    Database.KV.TransactionSpec
+
+  build-depends:
+    , base                    >=4.14 && <5
+    , bytestring
+    , data-default
+    , hspec
+    , lens
+    , rocksdb-haskell-jprupp
+    , rocksdb-kv-transactions
+    , rocksdb-kv-transactions:kv-transactions
+    , temporary
+
+  build-tool-depends: hspec-discover:hspec-discover
+  default-language:   Haskell2010
