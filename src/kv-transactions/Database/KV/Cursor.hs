@@ -103,37 +103,43 @@ data Instruction c a where
     -- | Seek to a specific key (or the next key if not found)
     Seek :: KeyOf c -> Instruction c (Maybe (Entry c))
 
-{- | Cursor monad for composing navigation operations.
+{- |
+Cursor monad for composing navigation operations.
 The @m@ parameter allows embedding in 'Transaction' or 'Querying'.
 -}
 type Cursor m c =
     ProgramT (Instruction c) m
 
-{- | Move to the first entry in the column.
+{- |
+Move to the first entry in the column.
 Returns @Nothing@ if the column is empty.
 -}
 firstEntry :: Cursor m c (Maybe (Entry c))
 firstEntry = singleton First
 
-{- | Move to the last entry in the column.
+{- |
+Move to the last entry in the column.
 Returns @Nothing@ if the column is empty.
 -}
 lastEntry :: Cursor m c (Maybe (Entry c))
 lastEntry = singleton Last
 
-{- | Move to the next entry.
+{- |
+Move to the next entry.
 Returns @Nothing@ if already at the end.
 -}
 nextEntry :: Cursor m c (Maybe (Entry c))
 nextEntry = singleton Next
 
-{- | Move to the previous entry.
+{- |
+Move to the previous entry.
 Returns @Nothing@ if already at the beginning.
 -}
 prevEntry :: Cursor m c (Maybe (Entry c))
 prevEntry = singleton Prev
 
-{- | Seek to the given key.
+{- |
+Seek to the given key.
 If the exact key doesn't exist, positions at the next key.
 Returns @Nothing@ if no entries exist at or after the key.
 -}
@@ -161,7 +167,8 @@ getIfValid codecs QueryIterator{isValid, entry, step} pos = do
                 Nothing -> Nothing
         else return Nothing
 
-{- | Interpret a cursor program using a query iterator.
+{- |
+Interpret a cursor program using a query iterator.
 Automatically destroys the iterator when the program completes.
 -}
 interpretCursor

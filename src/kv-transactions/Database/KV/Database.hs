@@ -81,33 +81,38 @@ import Data.Dependent.Map qualified as DMap
 import Data.Dependent.Sum (DSum ((:=>)))
 import Data.GADT.Compare (GCompare (..), GEq (..), GOrdering (..))
 
-{- | Phantom type representing a key-value pair in a collection.
+{- |
+Phantom type representing a key-value pair in a collection.
 Used as a type-level tag to associate keys and values.
 
 @KV UserId User@ represents a collection mapping @UserId@ to @User@.
 -}
 data KV k v
 
-{- | Type alias for selecting a column from a column family.
+{- |
+Type alias for selecting a column from a column family.
 @Selector t k v@ is a column selector @t@ for key type @k@ and value type @v@.
 -}
 type Selector t k v = t (KV k v)
 
-{- | Extract the key type from a 'KV' pair.
+{- |
+Extract the key type from a 'KV' pair.
 
 @KeyOf (KV UserId User) ~ UserId@
 -}
 type family KeyOf c where
     KeyOf (KV k v) = k
 
-{- | Extract the value type from a 'KV' pair.
+{- |
+Extract the value type from a 'KV' pair.
 
 @ValueOf (KV UserId User) ~ User@
 -}
 type family ValueOf c where
     ValueOf (KV k v) = v
 
-{- | Codecs for encoding and decoding keys and values to/from 'ByteString'.
+{- |
+Codecs for encoding and decoding keys and values to/from 'ByteString'.
 Uses lens 'Prism'' for bidirectional encoding that may fail on decode.
 -}
 data Codecs c = Codecs
@@ -117,7 +122,8 @@ data Codecs c = Codecs
     -- ^ Prism for encoding/decoding values
     }
 
-{- | A column definition pairing a backend-specific column family
+{- |
+A column definition pairing a backend-specific column family
 with codecs for serialization.
 -}
 data Column cf c = Column
@@ -127,7 +133,8 @@ data Column cf c = Column
     -- ^ Codecs for this column's keys and values
     }
 
-{- | Create columns from a list of column families and codecs.
+{- |
+Create columns from a list of column families and codecs.
 The lists must have the same length; families are paired with codecs in order.
 -}
 mkColumns :: [cf] -> DMap k2 Codecs -> DMap k2 (Column cf)
@@ -146,7 +153,8 @@ getColumn t columns =
         Just col -> pure col
         Nothing -> fail "query: column not found"
 
-{- | Decode a value using the column's codec, failing if decode fails.
+{- |
+Decode a value using the column's codec, failing if decode fails.
 This should never fail if the data was written correctly.
 -}
 decodeValueThrow
@@ -171,7 +179,8 @@ data Pos
     | -- | Release iterator resources
       PosDestroy
 
-{- | Backend-agnostic iterator interface for range queries.
+{- |
+Backend-agnostic iterator interface for range queries.
 Iterators maintain a position and can move through entries.
 -}
 data QueryIterator m = QueryIterator
@@ -195,7 +204,8 @@ hoistQueryIterator nat QueryIterator{step, isValid, entry} =
         , entry = nat entry
         }
 
-{- | Abstract database interface supporting multiple typed columns.
+{- |
+Abstract database interface supporting multiple typed columns.
 This is the core abstraction that backends (like RocksDB) implement.
 -}
 data Database m cf t op = Database
@@ -226,7 +236,8 @@ hoistDatabase nat Database{..} =
         , columns = columns
         }
 
-{- | Create a batch operation from a key and optional value.
+{- |
+Create a batch operation from a key and optional value.
 @Just v@ creates a put operation, @Nothing@ creates a delete.
 -}
 mkOp

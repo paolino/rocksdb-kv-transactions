@@ -69,7 +69,8 @@ import Database.RocksDB
     , write
     )
 
-{- | Create a 'Database' backed by RocksDB.
+{- |
+Create a 'Database' backed by RocksDB.
 
 This connects the abstract 'Database' interface to RocksDB operations:
 

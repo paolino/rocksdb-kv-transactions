@@ -114,7 +114,8 @@ import Database.KV.Database
     , mkOp
     )
 
-{- | Per-column workspace storing pending changes.
+{- |
+Per-column workspace storing pending changes.
 Maps keys to @Just value@ for inserts or @Nothing@ for deletes.
 -}
 newtype Workspace c = Workspace (Map (KeyOf c) (Maybe (ValueOf c)))
@@ -129,7 +130,8 @@ overWorkspace f (Workspace ws) = Workspace (f ws)
 -- | Collection of workspaces for all columns, indexed by column type.
 type Workspaces t = DMap t Workspace
 
-{- | Transaction execution context.
+{- |
+Transaction execution context.
 Maintains workspaces for buffered writes and access to the underlying database.
 -}
 newtype Context cf t op m a = Context
@@ -148,7 +150,8 @@ instance MonadTrans (Context cf t op) where
     lift f = Context $ do
         lift . lift $ f
 
-{- | Low-level transaction instructions.
+{- |
+Low-level transaction instructions.
 These are interpreted by 'interpretTransaction'.
 -}
 data TransactionInstruction m cf t op a where
@@ -182,13 +185,15 @@ data TransactionInstruction m cf t op a where
         :: Maybe (t c)
         -> TransactionInstruction m cf t op ()
 
-{- | Transaction monad for composing database operations.
+{- |
+Transaction monad for composing database operations.
 Built using the operational monad pattern for easy interpretation.
 -}
 type Transaction m cf t op =
     ProgramT (TransactionInstruction m cf t op) (Context cf t op m)
 
-{- | Read a value from a column.
+{- |
+Read a value from a column.
 First checks the workspace for pending changes, then falls back to the database.
 -}
 query
@@ -200,7 +205,8 @@ query
     -> Transaction m cf t op (Maybe (ValueOf c))
 query t k = singleton $ Query t k
 
-{- | Buffer an insert operation for the given key-value pair.
+{- |
+Buffer an insert operation for the given key-value pair.
 The actual write occurs when the transaction commits.
 -}
 insert
@@ -214,7 +220,8 @@ insert
     -> Transaction m cf t op ()
 insert t k v = singleton $ Insert t k v
 
-{- | Buffer a delete operation for the given key.
+{- |
+Buffer a delete operation for the given key.
 The actual delete occurs when the transaction commits.
 -}
 delete
@@ -226,7 +233,8 @@ delete
     -> Transaction m cf t op ()
 delete t k = singleton $ Delete t k
 
-{- | Run a cursor program over a column within the transaction.
+{- |
+Run a cursor program over a column within the transaction.
 Enables range queries and iteration.
 -}
 iterating
@@ -238,13 +246,15 @@ iterating
     -> Transaction m cf t op a
 iterating t cursorProg = singleton $ Iterating t cursorProg
 
-{- | Clear pending changes in workspace(s).
+{- |
+Clear pending changes in workspace(s).
 @reset Nothing@ clears all workspaces, @reset (Just col)@ clears one column.
 -}
 reset :: Maybe (t c) -> Transaction m cf t op ()
 reset mc = singleton $ Reset mc
 
-{- | Interpret a query instruction.
+{- |
+Interpret a query instruction.
 Checks workspace first, then reads from database.
 -}
 interpretQuery
@@ -319,7 +329,8 @@ interpretReset mc =
             DMap.adjust (const (Workspace Map.empty)) t
         Nothing -> DMap.map (const (Workspace Map.empty))
 
-{- | Interpret a transaction program in the execution context.
+{- |
+Interpret a transaction program in the execution context.
 Recursively processes instructions until the program completes.
 -}
 interpretTransaction
@@ -347,7 +358,8 @@ interpretTransaction prog = do
                 interpretReset mc
                 interpretTransaction (k ())
 
-{- | Run a transaction without concurrency control.
+{- |
+Run a transaction without concurrency control.
 Executes the transaction and applies all buffered operations atomically.
 
 Use this only when you can guarantee single-threaded access,
@@ -381,7 +393,8 @@ runTransactionUnguarded db@Database{columns, applyOps} tx = do
             Just column -> pure $ uncurry (mkOp db column) <$> Map.toList ws
             Nothing -> fail "runTransaction: column not found"
 
-{- | Handle for running serialized transactions.
+{- |
+Handle for running serialized transactions.
 Ensures only one transaction executes at a time using a mutex.
 -}
 newtype RunTransaction m cf t op = RunTransaction
@@ -389,7 +402,8 @@ newtype RunTransaction m cf t op = RunTransaction
     -- ^ Execute a transaction with serialization guarantee
     }
 
-{- | Create a new serialized transaction runner.
+{- |
+Create a new serialized transaction runner.
 Uses an MVar to ensure mutual exclusion between transactions.
 
 @
