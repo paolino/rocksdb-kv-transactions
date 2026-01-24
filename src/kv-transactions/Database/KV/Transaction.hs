@@ -1,5 +1,46 @@
+{- |
+Module      : Database.KV.Transaction
+Description : Transactional operations on type-safe key-value databases
+Copyright   : (c) Paolo Veronelli, 2024
+License     : Apache-2.0
+
+This module provides a transactional layer over the 'Database' abstraction,
+enabling atomic read-modify-write operations across multiple typed columns.
+
+= Transaction Semantics
+
+Transactions use an optimistic approach:
+
+1. Reads are performed directly from the database
+2. Writes are buffered in per-column workspaces
+3. All buffered writes are applied atomically at commit
+
+This means reads within a transaction see the database state at read time,
+not any uncommitted writes from the same transaction. For read-your-writes
+semantics, use the workspace-aware operations.
+
+= Concurrency Control
+
+Use 'newRunTransaction' to create a serialized transaction runner that
+ensures only one transaction executes at a time. For unguarded access
+(e.g., in single-threaded contexts), use 'runTransactionUnguarded'.
+
+= Example
+
+@
+data Cols c where
+    Users :: Cols (KV UserId User)
+
+runTx <- newRunTransaction db
+runTx $ do
+    mUser <- query Users userId
+    case mUser of
+        Just user -> insert Users userId (user { name = "New Name" })
+        Nothing -> pure ()
+@
+-}
 module Database.KV.Transaction
-    ( -- * Columns and Codecs
+    ( -- * Column Types (re-exported from Database)
       Codecs (..)
     , Column (..)
     , Selector
@@ -7,29 +48,31 @@ module Database.KV.Transaction
     , ValueOf
     , KV
 
-      -- * Transaction monadic context
+      -- * Transaction Context
     , Context
 
-      -- * Transaction program instructions and monad
+      -- * Transaction Monad
     , TransactionInstruction
     , Transaction
     , query
     , insert
     , delete
     , iterating
+    , reset
 
-      -- * Transaction interpreter in the context
+      -- * Running Transactions
     , interpretTransaction
     , RunTransaction (..)
     , newRunTransaction
     , runTransactionUnguarded
 
-      -- * Reexport
+      -- * Utilities
+    , mkCols
+
+      -- * Re-exports
     , module Data.GADT.Compare
     , module Data.Dependent.Map
     , module Data.Dependent.Sum
-    , mkCols
-    , reset
     )
 where
 
@@ -71,20 +114,22 @@ import Database.KV.Database
     , mkOp
     )
 
--- | Workspace for a single column, this iis where the changes are stored
+-- | Per-column workspace storing pending changes.
+-- Maps keys to @Just value@ for inserts or @Nothing@ for deletes.
 newtype Workspace c = Workspace (Map (KeyOf c) (Maybe (ValueOf c)))
 
--- modify workspace
+-- | Apply a function to the underlying map in a workspace.
 overWorkspace
     :: (Map (KeyOf c) (Maybe (ValueOf c)) -> Map (KeyOf c) (Maybe (ValueOf c)))
     -> Workspace c
     -> Workspace c
 overWorkspace f (Workspace ws) = Workspace (f ws)
 
--- | All workspaces for all columns
+-- | Collection of workspaces for all columns, indexed by column type.
 type Workspaces t = DMap t Workspace
 
--- | Monad that read the DB before the transaction and modifies the workspaces
+-- | Transaction execution context.
+-- Maintains workspaces for buffered writes and access to the underlying database.
 newtype Context cf t op m a = Context
     { unContext
         :: StateT (Workspaces t) (ReaderT (Database m cf t op) m) a
@@ -101,81 +146,97 @@ instance MonadTrans (Context cf t op) where
     lift f = Context $ do
         lift . lift $ f
 
--- | Instructions for the transaction
+-- | Low-level transaction instructions.
+-- These are interpreted by 'interpretTransaction'.
 data TransactionInstruction m cf t op a where
+    -- | Read a value from a column
     Query
         :: (GCompare t, Ord (KeyOf c))
         => t c
         -> KeyOf c
         -> TransactionInstruction m cf t op (Maybe (ValueOf c))
+    -- | Buffer an insert operation
     Insert
         :: (GCompare t, Ord (KeyOf c))
         => t c
         -> KeyOf c
         -> ValueOf c
         -> TransactionInstruction m cf t op ()
+    -- | Buffer a delete operation
     Delete
         :: (GCompare t, Ord (KeyOf c))
         => t c
         -> KeyOf c
         -> TransactionInstruction m cf t op ()
+    -- | Run a cursor program over a column
     Iterating
         :: (GCompare t)
         => t c
         -> Cursor (Transaction m cf t op) c a
         -> TransactionInstruction m cf t op a
+    -- | Clear workspace(s) - @Nothing@ clears all, @Just col@ clears one
     Reset
         :: Maybe (t c)
         -> TransactionInstruction m cf t op ()
 
--- | Transaction operational monad
+-- | Transaction monad for composing database operations.
+-- Built using the operational monad pattern for easy interpretation.
 type Transaction m cf t op =
     ProgramT (TransactionInstruction m cf t op) (Context cf t op m)
 
--- | Query a value for the given key in the given column
+-- | Read a value from a column.
+-- First checks the workspace for pending changes, then falls back to the database.
 query
     :: (GCompare t, Ord (KeyOf c))
     => t c
-    -- ^ column
+    -- ^ Column selector
     -> KeyOf c
-    -- ^ key
+    -- ^ Key to look up
     -> Transaction m cf t op (Maybe (ValueOf c))
 query t k = singleton $ Query t k
 
--- | Insert a value for the given key in the given column
+-- | Buffer an insert operation for the given key-value pair.
+-- The actual write occurs when the transaction commits.
 insert
     :: (GCompare t, Ord (KeyOf c))
     => t c
-    -- ^ column
+    -- ^ Column selector
     -> KeyOf c
-    -- ^ key
+    -- ^ Key
     -> ValueOf c
-    -- ^ value
+    -- ^ Value to insert
     -> Transaction m cf t op ()
 insert t k v = singleton $ Insert t k v
 
--- | Delete a value for the given key in the given column
+-- | Buffer a delete operation for the given key.
+-- The actual delete occurs when the transaction commits.
 delete
     :: (GCompare t, Ord (KeyOf c))
     => t c
-    -- ^ column
+    -- ^ Column selector
     -> KeyOf c
-    -- ^ key
+    -- ^ Key to delete
     -> Transaction m cf t op ()
 delete t k = singleton $ Delete t k
 
+-- | Run a cursor program over a column within the transaction.
+-- Enables range queries and iteration.
 iterating
     :: (GCompare t)
     => t c
-    -- ^ column
+    -- ^ Column selector
     -> Cursor (Transaction m cf t op) c a
-    -- ^ cursor operations
+    -- ^ Cursor program to execute
     -> Transaction m cf t op a
 iterating t cursorProg = singleton $ Iterating t cursorProg
 
+-- | Clear pending changes in workspace(s).
+-- @reset Nothing@ clears all workspaces, @reset (Just col)@ clears one column.
 reset :: Maybe (t c) -> Transaction m cf t op ()
 reset mc = singleton $ Reset mc
 
+-- | Interpret a query instruction.
+-- Checks workspace first, then reads from database.
 interpretQuery
     :: (GCompare t, Ord (KeyOf f), MonadFail m)
     => t f
@@ -196,6 +257,7 @@ interpretQuery t k = Context $ do
         rvalue <- lift $ lift $ valueAt cf $ review (keyCodec codecs) k
         mapM (decodeValueThrow codecs) rvalue
 
+-- | Buffer an insert in the workspace.
 interpretInsert
     :: (GCompare t, Ord (KeyOf c), Monad m)
     => t c
@@ -207,6 +269,7 @@ interpretInsert t k v =
         $ modify
         $ DMap.adjust (overWorkspace (Map.insert k (Just v))) t
 
+-- | Buffer a delete in the workspace.
 interpretDelete
     :: (GCompare t, Ord (KeyOf c), Monad m)
     => t c
@@ -217,6 +280,7 @@ interpretDelete t k =
         $ modify
         $ DMap.adjust (overWorkspace (Map.insert k Nothing)) t
 
+-- | Execute a cursor program within the transaction context.
 interpretIterating
     :: (GCompare t, MonadFail m)
     => t c
@@ -236,6 +300,7 @@ interpretIterating t cursorProg = Context $ do
             column
             cursorProg
 
+-- | Clear workspace(s) for the given column(s).
 interpretReset
     :: (Monad m, GCompare t) => Maybe (t c) -> Context cf t op m ()
 interpretReset mc =
@@ -244,7 +309,8 @@ interpretReset mc =
             DMap.adjust (const (Workspace Map.empty)) t
         Nothing -> DMap.map (const (Workspace Map.empty))
 
--- | Interpret the transaction as a value in the Context monad
+-- | Interpret a transaction program in the execution context.
+-- Recursively processes instructions until the program completes.
 interpretTransaction
     :: (GCompare t, MonadFail m)
     => Transaction m cf t op a
@@ -270,20 +336,30 @@ interpretTransaction prog = do
                 interpretReset mc
                 interpretTransaction (k ())
 
--- | Run a transaction in the given database context
+-- | Run a transaction without concurrency control.
+-- Executes the transaction and applies all buffered operations atomically.
+--
+-- Use this only when you can guarantee single-threaded access,
+-- or wrap with your own locking mechanism.
 runTransactionUnguarded
     :: forall m t cf op b
      . (GCompare t, MonadFail m)
     => Database m cf t op
+    -- ^ Database to run against
     -> Transaction m cf t op b
+    -- ^ Transaction to execute
     -> m b
 runTransactionUnguarded db@Database{columns, applyOps} tx = do
+    -- Initialize empty workspaces for all columns
     let emptyWorkspaces = DMap.map (const (Workspace Map.empty)) columns
+    -- Execute transaction, collecting workspace changes
     (result, workspaces) <-
         runReaderT
             (runStateT (unContext $ interpretTransaction tx) emptyWorkspaces)
             db
+    -- Convert workspace changes to batch operations
     ops <- mapM toBatchOps $ DMap.toList workspaces
+    -- Apply all operations atomically
     applyOps $ concat ops
     pure result
   where
@@ -293,15 +369,26 @@ runTransactionUnguarded db@Database{columns, applyOps} tx = do
             Just column -> pure $ uncurry (mkOp db column) <$> Map.toList ws
             Nothing -> fail "runTransaction: column not found"
 
--- | A runner for transactions that ensures only one transaction runs at a time
+-- | Handle for running serialized transactions.
+-- Ensures only one transaction executes at a time using a mutex.
 newtype RunTransaction m cf t op = RunTransaction
     { runTransaction :: forall a. Transaction m cf t op a -> m a
+    -- ^ Execute a transaction with serialization guarantee
     }
 
--- | Create a new RunTransaction that serializes transactions on the given database
+-- | Create a new serialized transaction runner.
+-- Uses an MVar to ensure mutual exclusion between transactions.
+--
+-- @
+-- runner <- newRunTransaction db
+-- -- These transactions will not run concurrently:
+-- forkIO $ runTransaction runner tx1
+-- forkIO $ runTransaction runner tx2
+-- @
 newRunTransaction
     :: (MonadIO m, MonadIO n, MonadMask n, GCompare t, MonadFail n)
     => Database n cf t op
+    -- ^ Database to run transactions against
     -> m (RunTransaction n cf t op)
 newRunTransaction db = do
     lock <- liftIO $ newMVar ()

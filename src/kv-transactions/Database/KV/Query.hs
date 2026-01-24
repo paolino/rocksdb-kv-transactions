@@ -1,16 +1,37 @@
-module Database.KV.Query
-    ( -- * Columns and Codecs
+{- |
+Module      : Database.KV.Query
+Description : Read-only queries on type-safe key-value databases
+Copyright   : (c) Paolo Veronelli, 2024
+License     : Apache-2.0
 
-      -- * Querying program instructions and monad
+This module provides a read-only query interface over the 'Database' abstraction.
+Unlike 'Transaction', queries do not buffer writes and cannot modify the database.
+
+= Snapshot Semantics
+
+Each query instruction operates on an independent database snapshot.
+There is currently no way to combine multiple queries on the same snapshot.
+For consistent reads across multiple keys, use the 'iterating' function
+with a cursor program.
+
+= When to Use
+
+Use 'Querying' when you only need to read data and don't need transactional
+guarantees. For read-modify-write operations, use 'Transaction' instead.
+-}
+module Database.KV.Query
+    ( -- * Query Instructions
       QueryInstruction
+
+      -- * Query Monad
     , Querying
     , query
     , iterating
 
-      -- * Querying interpreter in the context
+      -- * Running Queries
     , interpretQuerying
 
-      -- * Reexport
+      -- * Re-exports
     , module Data.GADT.Compare
     , module Data.Dependent.Map
     , module Data.Dependent.Sum
@@ -40,43 +61,53 @@ import Database.KV.Database
     , hoistQueryIterator
     )
 
--- | Instructions for the transaction
+-- | Low-level query instructions.
+-- These are interpreted by 'interpretQuerying'.
 data QueryInstruction m cf t op a where
+    -- | Read a value from a column
     Query
         :: (GCompare t, Ord (KeyOf c))
         => t c
         -> KeyOf c
         -> QueryInstruction m cf t op (Maybe (ValueOf c))
+    -- | Run a cursor program over a column
     Iterating
         :: (GCompare t)
         => t c
         -> Cursor (Querying m cf t op) c a
         -> QueryInstruction m cf t op a
 
--- | Querying operational monad
+-- | Query monad for composing read-only database operations.
+-- Built using the operational monad pattern for easy interpretation.
 type Querying m cf t op =
     ProgramT (QueryInstruction m cf t op) m
 
--- | Query a value for the given key in the given column
+-- | Read a value from a column.
+-- Returns @Nothing@ if the key doesn't exist.
 query
     :: (GCompare t, Ord (KeyOf c))
     => t c
-    -- ^ column
+    -- ^ Column selector
     -> KeyOf c
-    -- ^ key
+    -- ^ Key to look up
     -> Querying m cf t op (Maybe (ValueOf c))
 query t k = singleton $ Query t k
 
--- | Run a cursor program in the querying monad over the given column on a snapshot
+-- | Run a cursor program over a column.
+-- Enables range queries and iteration over entries.
+--
+-- The cursor operates on a snapshot, providing consistent reads
+-- across multiple entries within the same 'iterating' call.
 iterating
     :: (GCompare t)
     => t c
-    -- ^ column
+    -- ^ Column selector
     -> Cursor (Querying m cf t op) c a
-    -- ^ cursor program
+    -- ^ Cursor program to execute
     -> Querying m cf t op a
 iterating t cursorProg = singleton $ Iterating t cursorProg
 
+-- | Execute a single query instruction against the database.
 interpretQuery
     :: (GCompare t, MonadFail m)
     => Database m cf t op
@@ -91,6 +122,7 @@ interpretQuery Database{valueAt, columns} t k = do
     rvalue <- valueAt cf $ review (keyCodec codecs) k
     mapM (decodeValueThrow codecs) rvalue
 
+-- | Execute a cursor program against the database.
 interpretIterating
     :: (GCompare t, MonadFail m)
     => Database m cf t op
@@ -109,14 +141,16 @@ interpretIterating db@Database{newIterator, columns} t cursorProg = do
             column
             cursorProg
 
--- | Interpret the querting on the given database
--- Notice that everyt instruction is running on an indipendent snapshot of the database
--- There is currently no way to combine multiple instructions on the same snapshot.
--- Resort to using the iterator for that. i.e. querying ~ entryValue . seek
+-- | Interpret a query program against the database.
+--
+-- Note: Each instruction runs on an independent snapshot.
+-- For consistent reads across multiple keys, use 'iterating'.
 interpretQuerying
     :: (GCompare t, MonadFail m)
     => Database m cf t op
+    -- ^ Database to query
     -> Querying m cf t op a
+    -- ^ Query program to execute
     -> m a
 interpretQuerying db prog = do
     v <- viewT prog
