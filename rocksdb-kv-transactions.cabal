@@ -92,7 +92,6 @@ test-suite unit-tests
     , bytestring
     , data-default
     , hspec
-    , lens
     , rocksdb-haskell-jprupp
     , rocksdb-kv-transactions
     , rocksdb-kv-transactions:kv-transactions
