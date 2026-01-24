@@ -1,0 +1,45 @@
+site_name: RocksDB KV Transactions
+site_url: https://paolino.github.io/rocksdb-kv-transactions/
+repo_url: https://github.com/paolino/rocksdb-kv-transactions
+
+theme:
+  name: material
+  palette:
+    scheme: slate
+  features:
+    - navigation.indexes
+    - toc.integrate
+    - content.code.copy
+    - navigation.path
+
+plugins:
+  - search
+
+markdown_extensions:
+  - callouts
+  - tables
+  - footnotes
+  - def_list
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+nav:
+  - Home: index.md
+  - Architecture:
+    - Overview: architecture/overview.md
+    - Transactions: architecture/transactions.md
+    - Cursors: architecture/cursors.md
+  - API Reference: api.md
