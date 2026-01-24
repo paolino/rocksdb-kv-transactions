@@ -2,6 +2,8 @@
 
 Type-safe key-value transactions backed by RocksDB.
 
+[Documentation](https://paolino.github.io/rocksdb-kv-transactions/)
+
 ## Overview
 
 This library provides a transactional layer over RocksDB with:
