@@ -1,4 +1,4 @@
-{ indexState, pkgs, ... }:
+{ indexState, pkgs, mkdocs, ... }:
 
 let
   shell = { pkgs, ... }: {
@@ -12,7 +12,14 @@ let
       implicit-hie = { index-state = indexState; };
     };
     withHoogle = true;
-    buildInputs = [ pkgs.just pkgs.nixfmt-classic ];
+    buildInputs = [
+      pkgs.just
+      pkgs.nixfmt-classic
+      pkgs.mkdocs
+      mkdocs.from-nixpkgs
+      mkdocs.markdown-callouts
+      mkdocs.markdown-graphviz
+    ];
     shellHook = ''
       echo "Entering shell for rocksdb-kv-transactions development"
     '';

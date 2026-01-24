@@ -62,9 +62,19 @@ nix-build:
     nix build
 
 # Generate haddock documentation
-docs:
+haddock:
     #!/usr/bin/env bash
     cabal haddock all
+
+# Serve mkdocs documentation locally
+docs-serve:
+    #!/usr/bin/env bash
+    mkdocs serve
+
+# Build mkdocs documentation
+docs-build:
+    #!/usr/bin/env bash
+    mkdocs build
 
 # Clean build artifacts
 clean:

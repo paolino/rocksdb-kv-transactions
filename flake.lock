@@ -118,6 +118,24 @@
         "type": "github"
       }
     },
+    "flake-parts_2": {
+      "inputs": {
+        "nixpkgs-lib": "nixpkgs-lib_2"
+      },
+      "locked": {
+        "lastModified": 1763759067,
+        "narHash": "sha256-LlLt2Jo/gMNYAwOgdRQBrsRoOz7BPRkzvNaI/fzXi2Q=",
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "rev": "2cccadc7357c0ba201788ae99c4dfa90728ef5e0",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "type": "github"
+      }
+    },
     "flake-utils": {
       "inputs": {
         "systems": "systems"
@@ -511,6 +529,43 @@
         "type": "github"
       }
     },
+    "mkdocs": {
+      "inputs": {
+        "flake-parts": "flake-parts_2",
+        "nixpkgs": "nixpkgs"
+      },
+      "locked": {
+        "dir": "mkdocs",
+        "lastModified": 1769105627,
+        "narHash": "sha256-rrgDwBawvFcZbnOJ4Rtk+Q6t/kTa1oTdQ734mQwfOro=",
+        "owner": "paolino",
+        "repo": "dev-assets",
+        "rev": "45d545c4b8b5e255947acf45f0e1874a2f44d9ef",
+        "type": "github"
+      },
+      "original": {
+        "dir": "mkdocs",
+        "owner": "paolino",
+        "repo": "dev-assets",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1763678758,
+        "narHash": "sha256-+hBiJ+kG5IoffUOdlANKFflTT5nO3FrrR2CA3178Y5s=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "117cc7f94e8072499b0a7aa4c52084fa4e11cc9b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
     "nixpkgs-2305": {
       "locked": {
         "lastModified": 1705033721,
@@ -622,6 +677,21 @@
         "type": "github"
       }
     },
+    "nixpkgs-lib_2": {
+      "locked": {
+        "lastModified": 1761765539,
+        "narHash": "sha256-b0yj6kfvO8ApcSE+QmA6mUfu8IYG6/uU28OFn4PaC8M=",
+        "owner": "nix-community",
+        "repo": "nixpkgs.lib",
+        "rev": "719359f4562934ae99f5443f20aa06c2ffff91fc",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "nixpkgs.lib",
+        "type": "github"
+      }
+    },
     "nixpkgs-unstable": {
       "locked": {
         "lastModified": 1764587062,
@@ -660,6 +730,7 @@
         "flake-parts": "flake-parts",
         "flake-utils": "flake-utils",
         "haskellNix": "haskellNix",
+        "mkdocs": "mkdocs",
         "nixpkgs": [
           "haskellNix",
           "nixpkgs-unstable"
