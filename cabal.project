@@ -3,5 +3,5 @@ packages: .
 source-repository-package
     type: git
     location: https://github.com/paolino/rocksdb-haskell.git
-    tag: 4606b47b7e2c25d1a79b17933e2f2fac8543ef13
-    --sha256: 0g81fnmj09yl6c2c1p994j5f7q71xw5x7g4xm0qi0ny2rhk7b4wn
+    tag: a3e86b39f9510fea54abf734ee84aec33d0d683f
+    --sha256: 1gjzqhf81fy3bpc79ndmx3s77x3s1gf0lsk762acbfnpfh6g1hd0
