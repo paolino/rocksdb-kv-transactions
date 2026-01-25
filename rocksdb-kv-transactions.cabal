@@ -96,6 +96,7 @@ test-suite unit-tests
   main-is:            Main.hs
   other-modules:
     Database.KV.CursorSpec
+    Database.KV.QuerySpec
     Database.KV.TransactionSpec
 
   build-depends:
