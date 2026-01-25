@@ -1,3 +1,5 @@
+{-# LANGUAGE RankNTypes #-}
+
 {- |
 Module      : Database.KV.Database
 Description : Core database abstractions for type-safe key-value storage
@@ -219,6 +221,10 @@ data Database m cf t op = Database
     -- ^ Create a new iterator for range queries
     , columns :: DMap t (Column cf)
     -- ^ Map of all columns in this database
+    , withSnapshot :: forall a. (Database m cf t op -> m a) -> m a
+    -- ^ Run an action with a consistent snapshot of the database.
+    -- The provided 'Database' has 'valueAt' and 'newIterator' that
+    -- all operate on the same snapshot, enabling atomic reads.
     }
 
 -- | Transform the monad of a 'Database'.
@@ -228,13 +234,17 @@ hoistDatabase
     -> Database m cf t op
     -> Database n cf t op
 hoistDatabase nat Database{..} =
-    Database
-        { valueAt = \cf k -> nat $ valueAt cf k
-        , applyOps = nat . applyOps
-        , mkOperation = mkOperation
-        , newIterator = \cf -> nat $ hoistQueryIterator nat <$> newIterator cf
-        , columns = columns
-        }
+    let hoisted =
+            Database
+                { valueAt = \cf k -> nat $ valueAt cf k
+                , applyOps = nat . applyOps
+                , mkOperation = mkOperation
+                , newIterator =
+                    \cf -> nat $ hoistQueryIterator nat <$> newIterator cf
+                , columns = columns
+                , withSnapshot = \f -> f hoisted
+                }
+    in hoisted
 
 {- |
 Create a batch operation from a key and optional value.

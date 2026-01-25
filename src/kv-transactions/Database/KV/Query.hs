@@ -9,15 +9,17 @@ Unlike 'Transaction', queries do not buffer writes and cannot modify the databas
 
 = Snapshot Semantics
 
-Each query instruction operates on an independent database snapshot.
-There is currently no way to combine multiple queries on the same snapshot.
-For consistent reads across multiple keys, use the 'iterating' function
-with a cursor program.
+All operations within a single 'interpretQuerying' call operate on the same
+database snapshot, providing atomic/consistent reads. This means:
+
+* Multiple 'query' calls see the same data
+* 'iterating' cursors see the same data as 'query' calls
+* Concurrent writes by other threads are not visible
 
 = When to Use
 
-Use 'Querying' when you only need to read data and don't need transactional
-guarantees. For read-modify-write operations, use 'Transaction' instead.
+Use 'Querying' when you only need to read data and want consistent reads
+across multiple keys. For read-modify-write operations, use 'Transaction' instead.
 -}
 module Database.KV.Query
     ( -- * Query Instructions
@@ -54,7 +56,7 @@ import Database.KV.Cursor (Cursor, interpretCursor)
 import Database.KV.Database
     ( Codecs (keyCodec)
     , Column (Column, codecs, family)
-    , Database (Database, columns, newIterator, valueAt)
+    , Database (Database, columns, newIterator, valueAt, withSnapshot)
     , KeyOf
     , ValueOf
     , decodeValueThrow
@@ -143,7 +145,7 @@ interpretIterating db@Database{newIterator, columns} t cursorProg = do
             Just col -> pure col
             Nothing -> fail "interpretIterating: column not found"
     qi <- newIterator (family column)
-    interpretQuerying db
+    interpretLoop db
         $ interpretCursor
             (hoistQueryIterator lift qi)
             column
@@ -152,8 +154,8 @@ interpretIterating db@Database{newIterator, columns} t cursorProg = do
 {- |
 Interpret a query program against the database.
 
-Note: Each instruction runs on an independent snapshot.
-For consistent reads across multiple keys, use 'iterating'.
+All operations run on a single snapshot, providing atomic reads.
+Point queries and iterators all see the same consistent view of the database.
 -}
 interpretQuerying
     :: (GCompare t, MonadFail m)
@@ -162,14 +164,23 @@ interpretQuerying
     -> Querying m cf t op a
     -- ^ Query program to execute
     -> m a
-interpretQuerying db prog = do
+interpretQuerying db prog =
+    withSnapshot db $ \snapDB -> interpretLoop snapDB prog
+
+-- | Internal: Interpret query instructions on a snapshot-aware database.
+interpretLoop
+    :: (GCompare t, MonadFail m)
+    => Database m cf t op
+    -> Querying m cf t op a
+    -> m a
+interpretLoop db prog = do
     v <- viewT prog
     case v of
         Return a -> pure a
         instr :>>= cont -> case instr of
             Query t key -> do
                 r <- interpretQuery db t key
-                interpretQuerying db $ cont r
+                interpretLoop db $ cont r
             Iterating t cursorProg -> do
                 r <- interpretIterating db t cursorProg
-                interpretQuerying db $ cont r
+                interpretLoop db $ cont r

@@ -56,8 +56,12 @@ import Database.RocksDB
     ( BatchOp (DelCF, PutCF)
     , ColumnFamily
     , DB
+    , Snapshot
     , createIterator
+    , createIteratorSnap
+    , createSnapshot
     , destroyIterator
+    , destroyReadOpts
     , getCF
     , iterEntry
     , iterFirst
@@ -66,8 +70,10 @@ import Database.RocksDB
     , iterPrev
     , iterSeek
     , iterValid
+    , releaseSnapshot
     , write
     )
+import UnliftIO (MonadUnliftIO, bracket)
 
 {- |
 Create a 'Database' backed by RocksDB.
@@ -77,12 +83,13 @@ This connects the abstract 'Database' interface to RocksDB operations:
 * 'valueAt' uses 'getCF' for point lookups
 * 'applyOps' uses 'write' for atomic batch operations
 * 'newIterator' creates RocksDB iterators for range queries
+* 'withSnapshot' provides consistent reads across multiple operations
 
 The @columns@ parameter maps your typed column selectors to
 RocksDB column families with their serialization codecs.
 -}
 mkRocksDBDatabase
-    :: (MonadIO m)
+    :: (MonadUnliftIO m)
     => DB
     -- ^ Open RocksDB database handle
     -> DMap t (Column ColumnFamily)
@@ -117,4 +124,55 @@ mkRocksDBDatabase db columns =
                         PosAny k -> iterSeek i k
                         PosDestroy -> destroyIterator i
                     }
+        , withSnapshot = \f ->
+            -- Create a snapshot and provide a Database that uses it
+            bracket
+                (createSnapshot db)
+                releaseSnapshot
+                $ \(snapDB, snap) ->
+                    f $ mkSnapshotDatabase snapDB snap columns
+        }
+
+-- | Internal: Create a Database that operates on a specific snapshot.
+mkSnapshotDatabase
+    :: (MonadUnliftIO m)
+    => DB
+    -- ^ Snapshot-aware DB (from createSnapshot)
+    -> Snapshot
+    -- ^ The snapshot to use for iterators
+    -> DMap t (Column ColumnFamily)
+    -> Database m ColumnFamily t BatchOp
+mkSnapshotDatabase snapDB snap columns =
+    Database
+        { valueAt = \cf k -> do
+            -- Point lookup uses the snapshot-aware DB
+            getCF snapDB cf k
+        , applyOps = \ops -> do
+            -- Writes still go to the main DB
+            write snapDB ops
+        , mkOperation = \cf k mv ->
+            case mv of
+                Just v -> PutCF cf k v
+                Nothing -> DelCF cf k
+        , columns
+        , newIterator = \cf -> do
+            -- Create iterator on the same snapshot
+            (i, mro) <- createIteratorSnap snapDB (Just snap) (Just cf)
+            return
+                $ QueryIterator
+                    { isValid = liftIO $ iterValid i
+                    , entry = liftIO $ iterEntry i
+                    , step = \pos -> liftIO $ case pos of
+                        PosFirst -> iterFirst i
+                        PosLast -> iterLast i
+                        PosNext -> iterNext i
+                        PosPrev -> iterPrev i
+                        PosAny k -> iterSeek i k
+                        PosDestroy -> do
+                            destroyIterator i
+                            mapM_ destroyReadOpts mro
+                    }
+        , withSnapshot = \f ->
+            -- Already in a snapshot, just run the action
+            f $ mkSnapshotDatabase snapDB snap columns
         }

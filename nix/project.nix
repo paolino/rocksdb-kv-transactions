@@ -16,6 +16,7 @@ let
       pkgs.just
       pkgs.nixfmt-classic
       pkgs.mkdocs
+      pkgs.rocksdb
       mkdocs.from-nixpkgs
       mkdocs.markdown-callouts
       mkdocs.markdown-graphviz
