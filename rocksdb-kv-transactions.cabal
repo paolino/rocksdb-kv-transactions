@@ -10,8 +10,14 @@ license:       Apache-2.0
 license-file:  LICENSE
 author:        Paolo Veronelli
 maintainer:    paolo.veronelli@gmail.com
+copyright:     (c) 2024-2026 Paolo Veronelli
 category:      Database
 build-type:    Simple
+homepage:      https://github.com/paolino/rocksdb-kv-transactions
+bug-reports:   https://github.com/paolino/rocksdb-kv-transactions/issues
+stability:     experimental
+extra-doc-files:
+    README.md
 
 common warnings
   ghc-options:
@@ -54,15 +60,15 @@ library kv-transactions
     Database.KV.Transaction
 
   build-depends:
-    , base           >=4.14 && <5
-    , bytestring
-    , containers
-    , dependent-map
-    , dependent-sum
-    , exceptions
-    , lens
-    , operational
-    , transformers
+    , base           >=4.14   && <5
+    , bytestring     >=0.10   && <0.13
+    , containers     >=0.6    && <0.8
+    , dependent-map  >=0.4    && <0.5
+    , dependent-sum  >=0.7    && <0.8
+    , exceptions     >=0.10   && <0.11
+    , lens           >=5.0    && <5.4
+    , operational    >=0.2.4  && <0.3
+    , transformers   >=0.5    && <0.7
 
   hs-source-dirs:   src/kv-transactions/
   default-language: Haskell2010
@@ -72,7 +78,7 @@ library
   exposed-modules:  Database.KV.RocksDB
   build-depends:
     , base                                     >=4.14 && <5
-    , rocksdb-haskell-jprupp
+    , rocksdb-haskell-jprupp                   >=2.1  && <2.2
     , rocksdb-kv-transactions:kv-transactions
     , unliftio
 
@@ -90,14 +96,14 @@ test-suite unit-tests
     Database.KV.TransactionSpec
 
   build-depends:
-    , base                                     >=4.14 && <5
-    , bytestring
-    , data-default
-    , hspec
-    , rocksdb-haskell-jprupp
+    , base                                     >=4.14  && <5
+    , bytestring                               >=0.10  && <0.13
+    , data-default                             >=0.7   && <0.8
+    , hspec                                    >=2.10  && <2.12
+    , rocksdb-haskell-jprupp                   >=2.1   && <2.2
     , rocksdb-kv-transactions
     , rocksdb-kv-transactions:kv-transactions
-    , temporary
+    , temporary                                >=1.3   && <1.4
 
   build-tool-depends: hspec-discover:hspec-discover
   default-language:   Haskell2010
