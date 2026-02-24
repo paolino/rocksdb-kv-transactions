@@ -179,32 +179,33 @@ spec = describe "Database.KV.Transaction" $ do
 
     describe "snapshot consistency" $ do
         it
-            "queries within a transaction see consistent state despite concurrent writes" $ do
-            result <- withSystemTempDirectory "test-db" $ \fp -> do
-                withDBCF fp cfg [("items", cfg)] $ \db -> do
-                    runTx db codecs $ insert Items "k" "before"
-                    -- Start a transaction that reads, waits, then reads again
-                    -- A concurrent write happens during the wait
-                    ready <- newEmptyMVar
-                    done <- newEmptyMVar
-                    _ <- forkIO $ do
-                        takeMVar ready
-                        runTx db codecs $ insert Items "k" "after"
-                        putMVar done ()
-                    runTx db codecs $ do
-                        _ <- query Items "k"
-                        -- Signal the writer and wait for it
-                        Database.KV.Transaction.insert Items "_sync" "go"
-                        pure ()
-                    -- Write between two separate reads within one tx
-                    -- Both reads should see the same snapshot
-                    putMVar ready ()
-                    takeMVar done
-                    runTx db codecs $ do
-                        v <- query Items "k"
-                        pure v
-            -- After the concurrent write, the value should be "after"
-            result `shouldBe` Just "after"
+            "queries within a transaction see consistent state despite concurrent writes"
+            $ do
+                result <- withSystemTempDirectory "test-db" $ \fp -> do
+                    withDBCF fp cfg [("items", cfg)] $ \db -> do
+                        runTx db codecs $ insert Items "k" "before"
+                        -- Start a transaction that reads, waits, then reads again
+                        -- A concurrent write happens during the wait
+                        ready <- newEmptyMVar
+                        done <- newEmptyMVar
+                        _ <- forkIO $ do
+                            takeMVar ready
+                            runTx db codecs $ insert Items "k" "after"
+                            putMVar done ()
+                        runTx db codecs $ do
+                            _ <- query Items "k"
+                            -- Signal the writer and wait for it
+                            Database.KV.Transaction.insert Items "_sync" "go"
+                            pure ()
+                        -- Write between two separate reads within one tx
+                        -- Both reads should see the same snapshot
+                        putMVar ready ()
+                        takeMVar done
+                        runTx db codecs $ do
+                            v <- query Items "k"
+                            pure v
+                -- After the concurrent write, the value should be "after"
+                result `shouldBe` Just "after"
 
         it "transaction reads are isolated from concurrent inserts" $ do
             result <- withSystemTempDirectory "test-db" $ \fp -> do
