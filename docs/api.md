@@ -62,7 +62,22 @@ runTransactionUnguarded :: (GCompare t, MonadFail m)
                         -> m b
 ```
 
-Run a transaction without concurrency control. Use only in single-threaded contexts.
+Run a transaction without concurrency control. All reads target
+a consistent snapshot. Use only in single-threaded contexts.
+
+#### runSpeculation
+
+```haskell
+runSpeculation :: (GCompare t, MonadFail m)
+               => Database m cf t op
+               -> Transaction m cf t op b
+               -> m b
+```
+
+Run a transaction speculatively. Reads from a consistent snapshot
+with read-your-writes in the workspace, but discards all writes
+at the end. No mutations are applied to the database. Useful for
+computing derived results (trie roots, proofs) without side effects.
 
 #### newRunTransaction
 
@@ -173,15 +188,19 @@ A column definition with backend-specific identifier and codecs.
 
 ```haskell
 data Database m cf t op = Database
-    { valueAt     :: cf -> ByteString -> m (Maybe ByteString)
-    , applyOps    :: [op] -> m ()
-    , mkOperation :: cf -> ByteString -> Maybe ByteString -> op
-    , newIterator :: cf -> m (QueryIterator m)
-    , columns     :: DMap t (Column cf)
+    { valueAt      :: cf -> ByteString -> m (Maybe ByteString)
+    , applyOps     :: [op] -> m ()
+    , mkOperation  :: cf -> ByteString -> Maybe ByteString -> op
+    , newIterator  :: cf -> m (QueryIterator m)
+    , columns      :: DMap t (Column cf)
+    , withSnapshot :: forall a. (Database m cf t op -> m a) -> m a
     }
 ```
 
-Backend-agnostic database interface.
+Backend-agnostic database interface. The `withSnapshot` field
+provides a consistent snapshot of the database for atomic reads.
+The callback receives a `Database` whose `valueAt` and
+`newIterator` all operate on the same frozen point.
 
 ### Functions
 

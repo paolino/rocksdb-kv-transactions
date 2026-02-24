@@ -7,7 +7,9 @@ Type-safe key-value transactions backed by RocksDB.
 This library provides a transactional layer over RocksDB with:
 
 - **Type-safe columns** - Each column has its own key and value types, enforced at compile time
+- **Snapshot isolation** - All reads within a transaction see a consistent point-in-time view
 - **Atomic transactions** - Buffered writes are applied atomically on commit
+- **Speculation** - Read-your-writes transactions that discard mutations, for computing derived results
 - **Cursor iteration** - Range queries with forward/backward navigation
 - **Serialization via Prisms** - Flexible encoding/decoding using lens prisms
 

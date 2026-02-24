@@ -17,16 +17,19 @@ type Transaction m cf t op = ProgramT (TransactionInstruction m cf t op) (Contex
 
 ## Execution Model
 
-Transactions use an optimistic approach:
+Transactions use an optimistic approach with snapshot isolation:
 
 ```mermaid
 sequenceDiagram
     participant App as Application
     participant Tx as Transaction
     participant WS as Workspace
+    participant Snap as Snapshot
     participant DB as Database
 
     App->>Tx: runTransactionUnguarded tx
+    Tx->>DB: withSnapshot
+    DB-->>Snap: Create consistent snapshot
     Tx->>WS: Initialize empty workspaces
     loop For each operation
         alt Query
@@ -34,8 +37,8 @@ sequenceDiagram
             alt Found in workspace
                 WS-->>Tx: Return cached value
             else Not in workspace
-                Tx->>DB: Read from database
-                DB-->>Tx: Return value
+                Tx->>Snap: Read from snapshot
+                Snap-->>Tx: Return value
             end
         else Insert/Delete
             Tx->>WS: Buffer operation
@@ -45,6 +48,18 @@ sequenceDiagram
     Tx->>DB: Apply atomically
     DB-->>App: Return result
 ```
+
+## Snapshot Isolation
+
+All reads within a transaction target the same consistent snapshot.
+Concurrent writes to the database do not affect queries within an
+in-flight transaction.
+
+The snapshot is created at the start of `runTransactionUnguarded`
+(or `runSpeculation`) via the `withSnapshot` field on `Database`.
+The snapshot-backed `Database` is passed into the `ReaderT` that
+`interpretTransaction` runs in, so every `interpretQuery` call
+reads from the same frozen point.
 
 ## Workspace Buffering
 
@@ -108,3 +123,39 @@ applyOps $ concat ops
 ```
 
 RocksDB guarantees atomic batch writes.
+
+## Speculation
+
+`runSpeculation` executes a transaction against a snapshot with
+read-your-writes in the workspace, but discards all writes at the
+end. No mutations are applied to the database.
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant Tx as Transaction
+    participant WS as Workspace
+    participant Snap as Snapshot
+
+    App->>Tx: runSpeculation tx
+    Tx->>Snap: Create snapshot
+    Tx->>WS: Initialize empty workspaces
+    loop For each operation
+        alt Query
+            Tx->>WS: Check workspace
+            alt Found in workspace
+                WS-->>Tx: Return cached value
+            else Not in workspace
+                Tx->>Snap: Read from snapshot
+                Snap-->>Tx: Return value
+            end
+        else Insert/Delete
+            Tx->>WS: Buffer operation
+        end
+    end
+    Note over WS: Workspace discarded
+    Tx-->>App: Return result only
+```
+
+Use speculation for computing derived results (trie roots, proofs)
+without side effects.
