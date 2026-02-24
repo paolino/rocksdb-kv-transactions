@@ -9,15 +9,18 @@ enabling atomic read-modify-write operations across multiple typed columns.
 
 = Transaction Semantics
 
-Transactions use an optimistic approach:
+Transactions use an optimistic approach with snapshot isolation:
 
-1. Reads are performed directly from the database
-2. Writes are buffered in per-column workspaces
+1. All reads within a transaction operate on a consistent snapshot
+2. Writes are buffered in per-column workspaces (read-your-writes)
 3. All buffered writes are applied atomically at commit
 
-This means reads within a transaction see the database state at read time,
-not any uncommitted writes from the same transaction. For read-your-writes
-semantics, use the workspace-aware operations.
+= Speculation
+
+Use 'runSpeculation' to execute a transaction that reads from a snapshot
+and provides read-your-writes within the session, but discards all writes
+at the end. Useful for computing derived results (e.g., trie roots, proofs)
+without side effects.
 
 = Concurrency Control
 
@@ -65,6 +68,7 @@ module Database.KV.Transaction
     , RunTransaction (..)
     , newRunTransaction
     , runTransactionUnguarded
+    , runSpeculation
 
       -- * Utilities
     , fromPairList
@@ -361,6 +365,7 @@ interpretTransaction prog = do
 {- |
 Run a transaction without concurrency control.
 Executes the transaction and applies all buffered operations atomically.
+All reads within the transaction see a consistent snapshot.
 
 Use this only when you can guarantee single-threaded access,
 or wrap with your own locking mechanism.
@@ -373,25 +378,82 @@ runTransactionUnguarded
     -> Transaction m cf t op b
     -- ^ Transaction to execute
     -> m b
-runTransactionUnguarded db@Database{columns, applyOps} tx = do
-    -- Initialize empty workspaces for all columns
-    let emptyWorkspaces = DMap.map (const (Workspace Map.empty)) columns
-    -- Execute transaction, collecting workspace changes
-    (result, workspaces) <-
-        runReaderT
-            (runStateT (unContext $ interpretTransaction tx) emptyWorkspaces)
-            db
-    -- Convert workspace changes to batch operations
-    ops <- mapM toBatchOps $ DMap.toList workspaces
-    -- Apply all operations atomically
-    applyOps $ concat ops
-    pure result
+runTransactionUnguarded db@Database{columns, applyOps} tx =
+    withSnapshot db $ \snapDB -> do
+        (result, workspaces) <-
+            executeTransaction snapDB columns tx
+        ops <- workspaceToOps db columns workspaces
+        applyOps ops
+        pure result
+
+{- |
+Run a transaction speculatively without concurrency control.
+Reads from a consistent snapshot, buffers writes in the
+workspace for read-your-writes, but discards all writes
+at the end. No mutations are applied to the database.
+
+Use this for computing results (e.g., trie roots, proofs)
+without side effects.
+-}
+runSpeculation
+    :: forall m t cf op b
+     . (GCompare t, MonadFail m)
+    => Database m cf t op
+    -- ^ Database to run against
+    -> Transaction m cf t op b
+    -- ^ Transaction to execute
+    -> m b
+runSpeculation db@Database{columns} tx =
+    withSnapshot db $ \snapDB ->
+        fst <$> executeTransaction snapDB columns tx
+
+{- | Run a transaction program against a database,
+returning the result and final workspaces.
+-}
+executeTransaction
+    :: (GCompare t, MonadFail m)
+    => Database m cf t op
+    -- ^ Database for reads (typically a snapshot)
+    -> DMap t (Column cf)
+    -- ^ Column definitions
+    -> Transaction m cf t op b
+    -> m (b, Workspaces t)
+executeTransaction snapDB columns tx = do
+    let emptyWorkspaces =
+            DMap.map
+                (const (Workspace Map.empty))
+                columns
+    runReaderT
+        ( runStateT
+            ( unContext
+                $ interpretTransaction tx
+            )
+            emptyWorkspaces
+        )
+        snapDB
+
+{- | Convert workspaces to a flat list of batch
+operations.
+-}
+workspaceToOps
+    :: (GCompare t, MonadFail m)
+    => Database m cf t op
+    -> DMap t (Column cf)
+    -> Workspaces t
+    -> m [op]
+workspaceToOps db columns workspaces =
+    concat <$> mapM toBatchOps (DMap.toList workspaces)
   where
-    toBatchOps :: DSum t Workspace -> m [op]
     toBatchOps (sel :=> Workspace ws) =
         case DMap.lookup sel columns of
-            Just column -> pure $ uncurry (buildOperation db column) <$> Map.toList ws
-            Nothing -> fail "runTransaction: column not found"
+            Just column ->
+                pure
+                    $ uncurry
+                        (buildOperation db column)
+                        <$> Map.toList ws
+            Nothing ->
+                fail
+                    "runTransaction: column not found"
 
 {- |
 Handle for running serialized transactions.
