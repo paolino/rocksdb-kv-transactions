@@ -1,7 +1,8 @@
 {
   description = "RocksDB backend for key-value transactions";
   nixConfig = {
-    extra-substituters = [ "https://cache.iog.io" "https://paolino.cachix.org" ];
+    extra-substituters =
+      [ "https://cache.iog.io" "https://paolino.cachix.org" ];
     extra-trusted-public-keys = [
       "hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ="
       "paolino.cachix.org-1:iippTJnsYwrUfu4NJVnTdV+BNXS0bL0sfnnDPhw7WpI="

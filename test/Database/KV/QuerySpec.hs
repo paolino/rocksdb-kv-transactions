@@ -132,8 +132,8 @@ spec = describe "Database.KV.Query" $ do
             result `shouldBe` [("a", "1"), ("b", "2")]
 
     describe "snapshot consistency" $ do
-        it "repeated queries see the same value despite concurrent writes" $
-            do
+        it "repeated queries see the same value despite concurrent writes"
+            $ do
                 result <- withSystemTempDirectory "test-db" $ \fp -> do
                     withDBCF fp cfg [("items", cfg)] $ \db -> do
                         -- Initial data
@@ -170,8 +170,9 @@ spec = describe "Database.KV.Query" $ do
                             pure (v1, v2, v3)
 
                         -- Wait for writer or kill it
-                        _ <- try (takeMVar done)
-                            :: IO (Either SomeException ())
+                        _ <-
+                            try (takeMVar done)
+                                :: IO (Either SomeException ())
                         killThread writerThread
 
                         pure queryResult
@@ -268,9 +269,9 @@ spec = describe "Database.KV.Query" $ do
                                         let val =
                                                 BS.pack
                                                     $ "val"
-                                                    <> show i
-                                                    <> "-"
-                                                    <> show n
+                                                        <> show i
+                                                        <> "-"
+                                                        <> show n
                                         runTx db
                                             $ insert Items (BS.pack $ show i) val
                                     threadDelay 300
