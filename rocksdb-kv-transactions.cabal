@@ -1,27 +1,26 @@
-cabal-version: 3.4
-name:          rocksdb-kv-transactions
-version:       0.1.0.0
-synopsis:      RocksDB backend for key-value transactions
+cabal-version:   3.4
+name:            rocksdb-kv-transactions
+version:         0.1.0.0
+synopsis:        RocksDB backend for key-value transactions
 description:
   A library providing RocksDB-backed key-value transactions with
   dependent types for type-safe multi-collection operations.
 
-license:       Apache-2.0
-license-file:  LICENSE
-author:        Paolo Veronelli
-maintainer:    paolo.veronelli@gmail.com
-copyright:     (c) 2024-2026 Paolo Veronelli
-category:      Database
-build-type:    Simple
-homepage:      https://github.com/paolino/rocksdb-kv-transactions
-bug-reports:   https://github.com/paolino/rocksdb-kv-transactions/issues
-stability:     experimental
-extra-doc-files:
-    README.md
+license:         Apache-2.0
+license-file:    LICENSE
+author:          Paolo Veronelli
+maintainer:      paolo.veronelli@gmail.com
+copyright:       (c) 2024-2026 Paolo Veronelli
+category:        Database
+build-type:      Simple
+homepage:        https://github.com/paolino/rocksdb-kv-transactions
+bug-reports:     https://github.com/paolino/rocksdb-kv-transactions/issues
+stability:       experimental
+extra-doc-files: README.md
 
 source-repository head
-    type:     git
-    location: https://github.com/paolino/rocksdb-kv-transactions.git
+  type:     git
+  location: https://github.com/paolino/rocksdb-kv-transactions.git
 
 common warnings
   ghc-options:
@@ -64,15 +63,15 @@ library kv-transactions
     Database.KV.Transaction
 
   build-depends:
-    , base           >=4.14   && <5
-    , bytestring     >=0.10   && <0.13
-    , containers     >=0.6    && <0.8
-    , dependent-map  >=0.4    && <0.5
-    , dependent-sum  >=0.7    && <0.8
-    , exceptions     >=0.10   && <0.11
-    , lens           >=5.0    && <5.4
-    , operational    >=0.2.4  && <0.3
-    , transformers   >=0.5    && <0.7
+    , base           >=4.14  && <5
+    , bytestring     >=0.10  && <0.13
+    , containers     >=0.6   && <0.8
+    , dependent-map  >=0.4   && <0.5
+    , dependent-sum  >=0.7   && <0.8
+    , exceptions     >=0.10  && <0.11
+    , lens           >=5.0   && <5.4
+    , operational    >=0.2.4 && <0.3
+    , transformers   >=0.5   && <0.7
 
   hs-source-dirs:   src/kv-transactions/
   default-language: Haskell2010
@@ -100,14 +99,14 @@ test-suite unit-tests
     Database.KV.TransactionSpec
 
   build-depends:
-    , base                                     >=4.14  && <5
-    , bytestring                               >=0.10  && <0.13
-    , data-default                             >=0.7   && <0.8
-    , hspec                                    >=2.10  && <2.12
-    , rocksdb-haskell-jprupp                   >=2.1   && <2.2
+    , base                                     >=4.14 && <5
+    , bytestring                               >=0.10 && <0.13
+    , data-default                             >=0.7  && <0.8
+    , hspec                                    >=2.10 && <2.12
+    , rocksdb-haskell-jprupp                   >=2.1  && <2.2
     , rocksdb-kv-transactions
     , rocksdb-kv-transactions:kv-transactions
-    , temporary                                >=1.3   && <1.4
+    , temporary                                >=1.3  && <1.4
 
   build-tool-depends: hspec-discover:hspec-discover
   default-language:   Haskell2010
