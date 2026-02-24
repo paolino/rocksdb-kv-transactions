@@ -3,6 +3,12 @@ Tests for Database.KV.Transaction
 -}
 module Database.KV.TransactionSpec (spec) where
 
+import Control.Concurrent (forkIO)
+import Control.Concurrent.MVar
+    ( newEmptyMVar
+    , putMVar
+    , takeMVar
+    )
 import Data.ByteString (ByteString)
 import Data.Default (Default (..))
 import Data.Type.Equality ((:~:) (..))
@@ -21,6 +27,7 @@ import Database.KV.Transaction
     , fromPairList
     , insert
     , query
+    , runSpeculation
     , runTransactionUnguarded
     )
 import Database.RocksDB
@@ -60,6 +67,18 @@ runTx
 runTx db cols tx = do
     let rocksDBDatabase = mkRocksDBDatabase db $ mkColumns (columnFamilies db) cols
     runTransactionUnguarded rocksDBDatabase tx
+
+{- | Run a speculative transaction on a RocksDB
+database (reads snapshot, discards writes)
+-}
+runSpec
+    :: DB
+    -> DMap Tables Codecs
+    -> Transaction IO ColumnFamily Tables BatchOp a
+    -> IO a
+runSpec db cols tx = do
+    let rocksDBDatabase = mkRocksDBDatabase db $ mkColumns (columnFamilies db) cols
+    runSpeculation rocksDBDatabase tx
 
 -- | Default config for test databases
 cfg :: Config
@@ -157,3 +176,93 @@ spec = describe "Database.KV.Transaction" $ do
                             _ -> pure ()
                     runTx db codecs $ query Items "counter"
             result `shouldBe` Just "1"
+
+    describe "snapshot consistency" $ do
+        it
+            "queries within a transaction see consistent state despite concurrent writes" $ do
+            result <- withSystemTempDirectory "test-db" $ \fp -> do
+                withDBCF fp cfg [("items", cfg)] $ \db -> do
+                    runTx db codecs $ insert Items "k" "before"
+                    -- Start a transaction that reads, waits, then reads again
+                    -- A concurrent write happens during the wait
+                    ready <- newEmptyMVar
+                    done <- newEmptyMVar
+                    _ <- forkIO $ do
+                        takeMVar ready
+                        runTx db codecs $ insert Items "k" "after"
+                        putMVar done ()
+                    runTx db codecs $ do
+                        _ <- query Items "k"
+                        -- Signal the writer and wait for it
+                        Database.KV.Transaction.insert Items "_sync" "go"
+                        pure ()
+                    -- Write between two separate reads within one tx
+                    -- Both reads should see the same snapshot
+                    putMVar ready ()
+                    takeMVar done
+                    runTx db codecs $ do
+                        v <- query Items "k"
+                        pure v
+            -- After the concurrent write, the value should be "after"
+            result `shouldBe` Just "after"
+
+        it "transaction reads are isolated from concurrent inserts" $ do
+            result <- withSystemTempDirectory "test-db" $ \fp -> do
+                withDBCF fp cfg [("items", cfg)] $ \db -> do
+                    runTx db codecs $ do
+                        insert Items "a" "1"
+                        insert Items "b" "2"
+                    -- Concurrent write to "a" while we read "a" and "b"
+                    writerReady <- newEmptyMVar
+                    writerDone <- newEmptyMVar
+                    _ <- forkIO $ do
+                        takeMVar writerReady
+                        runTx db codecs $ insert Items "a" "CHANGED"
+                        putMVar writerDone ()
+                    -- Signal writer, wait for it, then read both in one tx
+                    putMVar writerReady ()
+                    takeMVar writerDone
+                    -- Now "a" is "CHANGED" in the DB
+                    -- A single transaction should see consistent state
+                    runTx db codecs $ do
+                        a <- query Items "a"
+                        b <- query Items "b"
+                        pure (a, b)
+            result `shouldBe` (Just "CHANGED", Just "2")
+
+    describe "speculation" $ do
+        it "speculative writes are discarded" $ do
+            result <- withSystemTempDirectory "test-db" $ \fp -> do
+                withDBCF fp cfg [("items", cfg)] $ \db -> do
+                    runTx db codecs $ insert Items "key" "original"
+                    -- Speculate: insert a new value
+                    runSpec db codecs $ do
+                        insert Items "key" "speculative"
+                        insert Items "new" "also-speculative"
+                    -- Original value should be untouched
+                    runTx db codecs $ do
+                        k <- query Items "key"
+                        n <- query Items "new"
+                        pure (k, n)
+            result `shouldBe` (Just "original", Nothing)
+
+        it "speculation provides read-your-writes" $ do
+            result <- withSystemTempDirectory "test-db" $ \fp -> do
+                withDBCF fp cfg [("items", cfg)] $ \db -> do
+                    runTx db codecs $ insert Items "x" "real"
+                    -- Within speculation, writes should be visible
+                    runSpec db codecs $ do
+                        insert Items "x" "speculated"
+                        insert Items "y" "new"
+                        x <- query Items "x"
+                        y <- query Items "y"
+                        pure (x, y)
+            result `shouldBe` (Just "speculated", Just "new")
+
+        it "speculation reads from snapshot" $ do
+            result <- withSystemTempDirectory "test-db" $ \fp -> do
+                withDBCF fp cfg [("items", cfg)] $ \db -> do
+                    runTx db codecs $ insert Items "s" "snap"
+                    -- Speculation should see the value at snapshot time
+                    runSpec db codecs $ query Items "s"
+            result `shouldBe` Just "snap"
