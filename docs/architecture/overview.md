@@ -2,11 +2,12 @@
 
 ## Design Philosophy
 
-The library is built around three core principles:
+The library is built around four core principles:
 
 1. **Type Safety** - Column keys and values are typed at compile time
 2. **Modularity** - Backend-agnostic abstractions with RocksDB implementation
 3. **Composability** - Transaction operations compose monadically
+4. **Snapshot Isolation** - All reads within a transaction see a consistent point-in-time view
 
 ## Component Diagram
 
@@ -14,6 +15,7 @@ The library is built around three core principles:
 graph TB
     subgraph "Application Layer"
         TX[Transaction Monad]
+        SPEC[Speculation]
         CUR[Cursor Operations]
     end
 
@@ -26,14 +28,17 @@ graph TB
     subgraph "Storage Layer"
         ROCKS[RocksDB Backend]
         CF[Column Families]
+        SNAP[Snapshots]
     end
 
     TX --> DB
+    SPEC --> DB
     CUR --> DB
     DB --> COL
     COL --> COD
     DB --> ROCKS
     ROCKS --> CF
+    ROCKS --> SNAP
 ```
 
 ## Library Structure
