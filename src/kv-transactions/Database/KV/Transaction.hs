@@ -63,6 +63,9 @@ module Database.KV.Transaction
     , iterating
     , reset
 
+      -- * Column Mapping
+    , mapColumns
+
       -- * Running Transactions
     , interpretTransaction
     , RunTransaction (..)
@@ -256,6 +259,142 @@ Clear pending changes in workspace(s).
 -}
 reset :: Maybe (t c) -> Transaction m cf t op ()
 reset mc = singleton $ Reset mc
+
+{- |
+Re-interpret a transaction from one column type to
+another, given an injection from the original to the
+target type. This enables composing transactions from
+libraries that define their own column GADTs into a
+single transaction over a unified type.
+
+@
+data CsmtCols c where
+    Nodes :: CsmtCols (KV NodeKey Node)
+
+data AllCols c where
+    Csmt :: CsmtCols c -> AllCols c
+
+liftCsmt
+    :: Transaction m cf CsmtCols op a
+    -> Transaction m cf AllCols op a
+liftCsmt = mapColumns Csmt
+@
+
+__Restriction:__ The transaction must be built from
+the standard combinators ('query', 'insert', 'delete',
+'iterating', 'reset') and monadic sequencing.
+Transactions that use 'lift' to embed raw 'Context'
+effects are not supported.
+-}
+mapColumns
+    :: forall m cf t t' op a
+     . (Monad m, GCompare t')
+    => (forall c. t c -> t' c)
+    -- ^ Injection from original column type
+    -> Transaction m cf t op a
+    -- ^ Transaction in original column type
+    -> Transaction m cf t' op a
+mapColumns f = goTx
+  where
+    goTx
+        :: forall b
+         . Transaction m cf t op b
+        -> Transaction m cf t' op b
+    goTx prog = do
+        v <- lift $ unsafeViewTx prog
+        case v of
+            Return a -> return a
+            instr :>>= k -> case instr of
+                Query t key -> do
+                    r <- query (f t) key
+                    goTx (k r)
+                Insert t key val -> do
+                    insert (f t) key val
+                    goTx (k ())
+                Delete t key -> do
+                    delete (f t) key
+                    goTx (k ())
+                Iterating t cur -> do
+                    r <-
+                        iterating
+                            (f t)
+                            (goCur cur)
+                    goTx (k r)
+                Reset mc -> do
+                    reset (fmap f mc)
+                    goTx (k ())
+
+    unsafeViewTx
+        :: forall b
+         . Transaction m cf t op b
+        -> Context
+            cf
+            t'
+            op
+            m
+            ( ProgramViewT
+                ( TransactionInstruction
+                    m
+                    cf
+                    t
+                    op
+                )
+                (Context cf t op m)
+                b
+            )
+    unsafeViewTx prog =
+        Context
+            $ StateT
+            $ \s' ->
+                ReaderT $ \_ -> do
+                    (v, _) <-
+                        runReaderT
+                            ( runStateT
+                                ( unContext
+                                    (viewT prog)
+                                )
+                                DMap.empty
+                            )
+                            dummyDB
+                    pure (v, s')
+
+    dummyDB :: Database m cf t op
+    dummyDB =
+        Database
+            { valueAt =
+                \_ _ -> error msg
+            , applyOps =
+                \_ -> error msg
+            , mkOperation =
+                \_ _ _ -> error msg
+            , newIterator =
+                \_ -> error msg
+            , columns = DMap.empty
+            , withSnapshot =
+                \_ -> error msg
+            }
+      where
+        msg =
+            "mapColumns: transaction"
+                <> " uses lift"
+
+    goCur
+        :: forall c b
+         . Cursor
+            (Transaction m cf t op)
+            c
+            b
+        -> Cursor
+            (Transaction m cf t' op)
+            c
+            b
+    goCur prog = do
+        v <- lift $ goTx $ viewT prog
+        case v of
+            Return a -> return a
+            instr :>>= k -> do
+                r <- singleton instr
+                goCur (k r)
 
 {- |
 Interpret a query instruction.

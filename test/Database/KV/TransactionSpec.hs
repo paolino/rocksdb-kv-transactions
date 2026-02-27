@@ -26,6 +26,7 @@ import Database.KV.Transaction
     , delete
     , fromPairList
     , insert
+    , mapColumns
     , query
     , runSpeculation
     , runTransactionUnguarded
@@ -79,6 +80,50 @@ runSpec
 runSpec db cols tx = do
     let rocksDBDatabase = mkRocksDBDatabase db $ mkColumns (columnFamilies db) cols
     runSpeculation rocksDBDatabase tx
+
+-- | Sub-column GADT A (for mapColumns tests)
+data SubA a where
+    ItemsA :: SubA (KV ByteString ByteString)
+
+instance GCompare SubA where
+    gcompare ItemsA ItemsA = GEQ
+
+instance GEq SubA where
+    geq ItemsA ItemsA = Just Refl
+
+-- | Sub-column GADT B (for mapColumns tests)
+data SubB a where
+    ItemsB :: SubB (KV ByteString ByteString)
+
+instance GCompare SubB where
+    gcompare ItemsB ItemsB = GEQ
+
+instance GEq SubB where
+    geq ItemsB ItemsB = Just Refl
+
+-- | Unified column GADT combining SubA and SubB
+data AllCols a where
+    InA :: SubA a -> AllCols a
+    InB :: SubB a -> AllCols a
+
+instance GEq AllCols where
+    geq (InA a) (InA a') = geq a a'
+    geq (InB b) (InB b') = geq b b'
+    geq _ _ = Nothing
+
+instance GCompare AllCols where
+    gcompare (InA a) (InA a') = gcompare a a'
+    gcompare (InA _) (InB _) = GLT
+    gcompare (InB _) (InA _) = GGT
+    gcompare (InB b) (InB b') = gcompare b b'
+
+-- | Codecs for unified columns
+allCodecs :: DMap AllCols Codecs
+allCodecs =
+    fromPairList
+        [ InA ItemsA :=> bsCodec
+        , InB ItemsB :=> bsCodec
+        ]
 
 -- | Default config for test databases
 cfg :: Config
@@ -201,9 +246,8 @@ spec = describe "Database.KV.Transaction" $ do
                         -- Both reads should see the same snapshot
                         putMVar ready ()
                         takeMVar done
-                        runTx db codecs $ do
-                            v <- query Items "k"
-                            pure v
+                        runTx db codecs
+                            $ query Items "k"
                 -- After the concurrent write, the value should be "after"
                 result `shouldBe` Just "after"
 
@@ -267,3 +311,93 @@ spec = describe "Database.KV.Transaction" $ do
                     -- Speculation should see the value at snapshot time
                     runSpec db codecs $ query Items "s"
             result `shouldBe` Just "snap"
+
+    describe "mapColumns" $ do
+        let withAllDB action =
+                withSystemTempDirectory "test-db"
+                    $ \fp ->
+                        withDBCF
+                            fp
+                            cfg
+                            [ ("colA", cfg)
+                            , ("colB", cfg)
+                            ]
+                            $ \db ->
+                                action
+                                    $ mkRocksDBDatabase db
+                                    $ mkColumns
+                                        (columnFamilies db)
+                                        allCodecs
+            run =
+                runTransactionUnguarded
+
+        it "lifts a sub-transaction" $ do
+            result <- withAllDB $ \db -> do
+                run db
+                    $ mapColumns InA
+                    $ insert ItemsA "ka" "va"
+                run db
+                    $ query (InA ItemsA) "ka"
+            result `shouldBe` Just "va"
+
+        it "composes from different types"
+            $ do
+                result <- withAllDB $ \db -> do
+                    run db $ do
+                        mapColumns InA
+                            $ insert
+                                ItemsA
+                                "ka"
+                                "va"
+                        mapColumns InB
+                            $ insert
+                                ItemsB
+                                "kb"
+                                "vb"
+                    run db $ do
+                        a <-
+                            query
+                                (InA ItemsA)
+                                "ka"
+                        b <-
+                            query
+                                (InB ItemsB)
+                                "kb"
+                        pure (a, b)
+                result
+                    `shouldBe` ( Just "va"
+                               , Just "vb"
+                               )
+
+        it "maps read-modify-write" $ do
+            result <- withAllDB $ \db -> do
+                run db
+                    $ mapColumns InA
+                    $ insert ItemsA "x" "old"
+                run db $ mapColumns InA $ do
+                    mv <- query ItemsA "x"
+                    case mv of
+                        Just _ ->
+                            insert
+                                ItemsA
+                                "x"
+                                "new"
+                        Nothing -> pure ()
+                run db
+                    $ query (InA ItemsA) "x"
+            result `shouldBe` Just "new"
+
+        it "maps delete operations" $ do
+            result <- withAllDB $ \db -> do
+                run db
+                    $ mapColumns InA
+                    $ insert ItemsA "d" "val"
+                run db
+                    $ mapColumns InA
+                    $ delete ItemsA "d"
+                run db
+                    $ query (InA ItemsA) "d"
+            result
+                `shouldBe` ( Nothing
+                                :: Maybe ByteString
+                           )
