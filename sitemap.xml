@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+         <loc>https://paolino.github.io/rocksdb-kv-transactions/</loc>
+         <lastmod>1980-01-01</lastmod>
+    </url>
+    <url>
+         <loc>https://paolino.github.io/rocksdb-kv-transactions/api/</loc>
+         <lastmod>1980-01-01</lastmod>
+    </url>
+    <url>
+         <loc>https://paolino.github.io/rocksdb-kv-transactions/architecture/cursors/</loc>
+         <lastmod>1980-01-01</lastmod>
+    </url>
+    <url>
+         <loc>https://paolino.github.io/rocksdb-kv-transactions/architecture/overview/</loc>
+         <lastmod>1980-01-01</lastmod>
+    </url>
+    <url>
+         <loc>https://paolino.github.io/rocksdb-kv-transactions/architecture/transactions/</loc>
+         <lastmod>1980-01-01</lastmod>
+    </url>
+</urlset>
