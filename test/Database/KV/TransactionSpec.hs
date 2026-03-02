@@ -12,7 +12,10 @@ import Control.Concurrent.MVar
 import Data.ByteString (ByteString)
 import Data.Default (Default (..))
 import Data.Type.Equality ((:~:) (..))
-import Database.KV.Database (mkColumns)
+import Database.KV.Database
+    ( mkColumns
+    , prefixDatabase
+    )
 import Database.KV.RocksDB (mkRocksDBDatabase)
 import Database.KV.Transaction
     ( Codecs (..)
@@ -401,3 +404,178 @@ spec = describe "Database.KV.Transaction" $ do
                 `shouldBe` ( Nothing
                                 :: Maybe ByteString
                            )
+
+    describe "prefixDatabase" $ do
+        it "prefixed writes are isolated" $ do
+            result <-
+                withSystemTempDirectory "test-db"
+                    $ \fp ->
+                        withDBCF
+                            fp
+                            cfg
+                            [("items", cfg)]
+                            $ \db -> do
+                                let base =
+                                        mkRocksDBDatabase
+                                            db
+                                            $ mkColumns
+                                                ( columnFamilies
+                                                    db
+                                                )
+                                                codecs
+                                    dbA =
+                                        prefixDatabase
+                                            "a:"
+                                            base
+                                    dbB =
+                                        prefixDatabase
+                                            "b:"
+                                            base
+                                runTransactionUnguarded
+                                    dbA
+                                    $ insert Items "k" "va"
+                                runTransactionUnguarded
+                                    dbB
+                                    $ insert Items "k" "vb"
+                                a <-
+                                    runTransactionUnguarded
+                                        dbA
+                                        $ query Items "k"
+                                b <-
+                                    runTransactionUnguarded
+                                        dbB
+                                        $ query Items "k"
+                                pure (a, b)
+            result
+                `shouldBe` ( Just "va"
+                           , Just "vb"
+                           )
+
+        it
+            "prefixed reads don't see unprefixed data"
+            $ do
+                result <-
+                    withSystemTempDirectory "test-db"
+                        $ \fp ->
+                            withDBCF
+                                fp
+                                cfg
+                                [("items", cfg)]
+                                $ \db -> do
+                                    let base =
+                                            mkRocksDBDatabase
+                                                db
+                                                $ mkColumns
+                                                    ( columnFamilies
+                                                        db
+                                                    )
+                                                    codecs
+                                        pfxDb =
+                                            prefixDatabase
+                                                "pfx:"
+                                                base
+                                    runTransactionUnguarded
+                                        base
+                                        $ insert
+                                            Items
+                                            "k"
+                                            "raw"
+                                    runTransactionUnguarded
+                                        pfxDb
+                                        $ query Items "k"
+                result `shouldBe` Nothing
+
+        it "prefixed delete only affects prefix"
+            $ do
+                result <-
+                    withSystemTempDirectory "test-db"
+                        $ \fp ->
+                            withDBCF
+                                fp
+                                cfg
+                                [("items", cfg)]
+                                $ \db -> do
+                                    let base =
+                                            mkRocksDBDatabase
+                                                db
+                                                $ mkColumns
+                                                    ( columnFamilies
+                                                        db
+                                                    )
+                                                    codecs
+                                        dbA =
+                                            prefixDatabase
+                                                "a:"
+                                                base
+                                        dbB =
+                                            prefixDatabase
+                                                "b:"
+                                                base
+                                    runTransactionUnguarded
+                                        dbA
+                                        $ insert
+                                            Items
+                                            "k"
+                                            "va"
+                                    runTransactionUnguarded
+                                        dbB
+                                        $ insert
+                                            Items
+                                            "k"
+                                            "vb"
+                                    runTransactionUnguarded
+                                        dbA
+                                        $ delete Items "k"
+                                    a <-
+                                        runTransactionUnguarded
+                                            dbA
+                                            $ query Items "k"
+                                    b <-
+                                        runTransactionUnguarded
+                                            dbB
+                                            $ query Items "k"
+                                    pure (a, b)
+                result
+                    `shouldBe` ( Nothing
+                               , Just "vb"
+                               )
+
+        it
+            "composes with mapColumns"
+            $ do
+                result <-
+                    withSystemTempDirectory "test-db"
+                        $ \fp ->
+                            withDBCF
+                                fp
+                                cfg
+                                [ ("colA", cfg)
+                                , ("colB", cfg)
+                                ]
+                                $ \db -> do
+                                    let base =
+                                            mkRocksDBDatabase
+                                                db
+                                                $ mkColumns
+                                                    ( columnFamilies
+                                                        db
+                                                    )
+                                                    allCodecs
+                                        pfxDb =
+                                            prefixDatabase
+                                                "t1:"
+                                                base
+                                    runTransactionUnguarded
+                                        pfxDb
+                                        $ mapColumns InA
+                                        $ insert
+                                            ItemsA
+                                            "k"
+                                            "prefixed"
+                                    runTransactionUnguarded
+                                        pfxDb
+                                        $ query
+                                            (InA ItemsA)
+                                            "k"
+                result
+                    `shouldBe` Just "prefixed"

@@ -59,6 +59,7 @@ module Database.KV.Database
       -- * Database Interface
     , Database (..)
     , hoistDatabase
+    , prefixDatabase
     , buildOperation
 
       -- * Iterator Types
@@ -78,6 +79,7 @@ where
 
 import Control.Lens (Prism', preview, review)
 import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
 import Data.Dependent.Map (DMap, fromList)
 import Data.Dependent.Map qualified as DMap
 import Data.Dependent.Sum (DSum ((:=>)))
@@ -246,6 +248,123 @@ hoistDatabase nat Database{..} =
                 , withSnapshot = \f -> f hoisted
                 }
     in  hoisted
+
+{- |
+Wrap a 'Database' so every raw key is transparently
+prefixed. Reads, writes, iterators, and snapshots all
+go through the underlying 'Database' — snapshot support
+is inherited automatically via delegation.
+
+This enables multiplexing multiple logical databases
+into shared column families. Each logical partition
+gets a unique prefix; the wrapper prepends it on
+writes and seeks, strips it on reads.
+
+@
+let userDb = prefixDatabase "user:" db
+let postDb = prefixDatabase "post:" db
+-- Both share the same column families but keys
+-- are isolated: "user:123" vs "post:456"
+@
+-}
+prefixDatabase
+    :: (Monad m)
+    => ByteString
+    -- ^ Prefix to prepend to all keys
+    -> Database m cf t op
+    -> Database m cf t op
+prefixDatabase pfx db =
+    let prefixed =
+            db
+                { valueAt = \cf key ->
+                    valueAt db cf (pfx <> key)
+                , mkOperation = \cf key mv ->
+                    mkOperation
+                        db
+                        cf
+                        (pfx <> key)
+                        mv
+                , newIterator = \cf ->
+                    prefixIterator pfx
+                        <$> newIterator db cf
+                , withSnapshot = \f ->
+                    withSnapshot
+                        db
+                        (f . prefixDatabase pfx)
+                }
+    in  prefixed
+
+{- | Wrap a 'QueryIterator' to restrict it to entries
+sharing a common key prefix. Seeks are redirected
+into the prefix range; entries outside the range
+are invisible; returned keys have the prefix
+stripped.
+-}
+prefixIterator
+    :: (Monad m)
+    => ByteString
+    -> QueryIterator m
+    -> QueryIterator m
+prefixIterator pfx qi =
+    QueryIterator
+        { step = \case
+            PosFirst ->
+                step qi (PosAny pfx)
+            PosLast -> do
+                step qi (PosAny (incrementPrefix pfx))
+                v <- isValid qi
+                if v
+                    then step qi PosPrev
+                    else step qi PosLast
+            PosNext -> step qi PosNext
+            PosPrev -> step qi PosPrev
+            PosAny k ->
+                step qi (PosAny (pfx <> k))
+            PosDestroy -> step qi PosDestroy
+        , isValid = do
+            v <- isValid qi
+            if v
+                then do
+                    me <- entry qi
+                    case me of
+                        Just (k, _) ->
+                            pure
+                                ( pfx
+                                    `BS.isPrefixOf` k
+                                )
+                        Nothing -> pure False
+                else pure False
+        , entry = do
+            me <- entry qi
+            case me of
+                Just (k, v)
+                    | pfx `BS.isPrefixOf` k ->
+                        pure
+                            $ Just
+                                ( BS.drop
+                                    (BS.length pfx)
+                                    k
+                                , v
+                                )
+                _ -> pure Nothing
+        }
+
+{- | Increment the last byte of a prefix to get the
+exclusive upper bound for prefix scanning.
+-}
+incrementPrefix :: ByteString -> ByteString
+incrementPrefix bs
+    | BS.null bs = BS.singleton 0
+    | otherwise =
+        let lastByte = BS.last bs
+        in  if lastByte == 0xFF
+                then
+                    incrementPrefix (BS.init bs)
+                        <> BS.singleton 0
+                else
+                    BS.init bs
+                        <> BS.singleton
+                            (lastByte + 1)
 
 {- |
 Create a batch operation from a key and optional value.
