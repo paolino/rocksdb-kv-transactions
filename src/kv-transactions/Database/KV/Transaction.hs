@@ -93,10 +93,10 @@ import Control.Monad.Operational
     , singleton
     , viewT
     )
-import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Trans.Class (MonadTrans (..))
-import Debug.Trace (traceM)
+import Debug.Trace (trace)
 import GHC.Clock (getMonotonicTimeNSec)
+import System.IO.Unsafe (unsafePerformIO)
 import Control.Monad.Trans.Reader (ReaderT (..), ask)
 import Control.Monad.Trans.State.Strict
     ( StateT (..)
@@ -448,7 +448,7 @@ interpretDelete t k =
 
 -- | Execute a cursor program within the transaction context.
 interpretIterating
-    :: (GCompare t, MonadFail m, MonadIO m)
+    :: (GCompare t, MonadFail m)
     => t c
     -> Cursor (Transaction m cf t op) c a
     -> Context cf t op m a
@@ -458,11 +458,10 @@ interpretIterating t cursorProg = Context $ do
         case DMap.lookup t columns of
             Just col -> pure col
             Nothing -> fail "interpretIterating: column not found"
-    t0 <- liftIO getMonotonicTimeNSec
+    let !t0 = unsafePerformIO getMonotonicTimeNSec
     qi <- lift $ lift $ newIterator (family column)
-    t1 <- liftIO getMonotonicTimeNSec
-    let iterUs = fromIntegral (t1 - t0) `div` 1000 :: Int
-    traceM $ "ITER newIterator " ++ show iterUs ++ "us"
+    let !t1 = unsafePerformIO getMonotonicTimeNSec
+        !iterUs = fromIntegral (t1 - t0) `div` 1000 :: Int
     r <-
         unContext
             $ interpretTransaction
@@ -470,10 +469,17 @@ interpretIterating t cursorProg = Context $ do
                 (hoistQueryIterator (lift . lift) qi)
                 column
                 cursorProg
-    t2 <- liftIO getMonotonicTimeNSec
-    let cursorUs = fromIntegral (t2 - t1) `div` 1000 :: Int
-    traceM $ "ITER cursor " ++ show cursorUs ++ "us"
-    pure r
+    let !t2 = unsafePerformIO getMonotonicTimeNSec
+        !cursorUs = fromIntegral (t2 - t1) `div` 1000 :: Int
+    pure
+        $ trace
+            ( "ITER new="
+                ++ show iterUs
+                ++ "us cursor="
+                ++ show cursorUs
+                ++ "us"
+            )
+            r
 
 -- | Clear workspace(s) for the given column(s).
 interpretReset
@@ -489,7 +495,7 @@ Interpret a transaction program in the execution context.
 Recursively processes instructions until the program completes.
 -}
 interpretTransaction
-    :: (GCompare t, MonadFail m, MonadIO m)
+    :: (GCompare t, MonadFail m)
     => Transaction m cf t op a
     -> Context cf t op m a
 interpretTransaction prog = do
@@ -562,7 +568,7 @@ runSpeculation db@Database{columns} tx =
 returning the result and final workspaces.
 -}
 executeTransaction
-    :: (GCompare t, MonadFail m, MonadIO m)
+    :: (GCompare t, MonadFail m)
     => Database m cf t op
     -- ^ Database for reads (typically a snapshot)
     -> DMap t (Column cf)
