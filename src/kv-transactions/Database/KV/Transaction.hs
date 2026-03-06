@@ -458,10 +458,9 @@ interpretIterating t cursorProg = Context $ do
         case DMap.lookup t columns of
             Just col -> pure col
             Nothing -> fail "interpretIterating: column not found"
-    let !t0 = unsafePerformIO getMonotonicTimeNSec
+    t0 <- pure $! unsafePerformIO getMonotonicTimeNSec
     qi <- lift $ lift $ newIterator (family column)
-    let !t1 = unsafePerformIO getMonotonicTimeNSec
-        !iterUs = fromIntegral (t1 - t0) `div` 1000 :: Int
+    t1 <- pure $! unsafePerformIO getMonotonicTimeNSec
     r <-
         unContext
             $ interpretTransaction
@@ -469,7 +468,8 @@ interpretIterating t cursorProg = Context $ do
                 (hoistQueryIterator (lift . lift) qi)
                 column
                 cursorProg
-    let !t2 = unsafePerformIO getMonotonicTimeNSec
+    t2 <- pure $! unsafePerformIO getMonotonicTimeNSec
+    let !iterUs = fromIntegral (t1 - t0) `div` 1000 :: Int
         !cursorUs = fromIntegral (t2 - t1) `div` 1000 :: Int
     pure
         $ trace
